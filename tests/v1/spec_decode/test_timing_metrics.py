@@ -166,3 +166,25 @@ def test_timer_per_position_draft(monkeypatch):
     assert drained is not None
     # Only the two recorded positions are reported.
     assert drained.draft_forward_ms_per_pos == [1.0, 1.0]
+
+
+class _FakeEventNotReady(_FakeEvent):
+    """A CUDA event stand-in whose work has not completed on the device."""
+
+    def query(self) -> bool:
+        return False
+
+
+def test_timer_drain_skips_until_events_complete(monkeypatch):
+    import torch
+
+    monkeypatch.setattr(torch.cuda, "Event", _FakeEventNotReady)
+    timer = SpecDecodeTimer(enabled=True, num_spec_tokens=2)
+
+    timer.begin_step()
+    with timer.time_stage("target_forward"):
+        pass
+    # The previous step recorded events, but they are not complete on the
+    # device, so drain() must return None without reading elapsed_time.
+    timer.begin_step()
+    assert timer.drain() is None

@@ -7,6 +7,17 @@ from prometheus_client import REGISTRY
 from prometheus_client import Metric as PromMetric
 from prometheus_client.samples import Sample
 
+# Counters that are exposed as a positional Vector instead of scalar Counters.
+# Each is a set of counters labeled with 'position'; the reader collapses them
+# into a single ordered array. Membership is explicit (not a name suffix) so an
+# unrelated counter cannot be misrouted into the position-label digest.
+_VECTOR_COUNTER_NAMES = frozenset(
+    {
+        "vllm:spec_decode_num_accepted_tokens_per_pos",
+        "vllm:spec_decode_draft_forward_microseconds_per_pos",
+    }
+)
+
 
 @dataclass
 class Metric:
@@ -95,11 +106,9 @@ def get_metrics_snapshot() -> list[Metric]:
                 )
         elif metric.type == "counter":
             samples = _get_samples(metric, "_total")
-            if metric.name.endswith("_per_pos"):
+            if metric.name in _VECTOR_COUNTER_NAMES:
                 #
-                # Per-position spec-decode counters (e.g.
-                # vllm:spec_decode_num_accepted_tokens_per_pos and the
-                # per-position draft timing counters) are vectors of counters:
+                # Per-position spec-decode counters are vectors of counters:
                 # for each draft position we observe a value via a Counter
                 # labeled with 'position'. We convert these into a vector of
                 # integer values.

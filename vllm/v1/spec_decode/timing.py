@@ -139,8 +139,12 @@ class SpecDecodeTimer:
                 yield
                 return
             pair = slot.draft_pos[pos]
-        else:
+        elif stage in slot.scalar:
             pair = slot.scalar[stage]
+        else:
+            raise ValueError(
+                f"Unknown scalar stage {stage!r}; per-position stages require pos="
+            )
         slot.dirty = True
         pair.record_start()
         try:
@@ -160,6 +164,8 @@ class SpecDecodeTimer:
         if not prev.dirty or not prev.ready():
             return None
         prev.dirty = False
+        # Draft positions are recorded contiguously from 0 (one forward per
+        # speculative step), so stop at the first unrecorded position.
         draft_ms: list[float] = []
         for pair in prev.draft_pos:
             if not pair.recorded:

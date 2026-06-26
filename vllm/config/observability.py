@@ -60,8 +60,9 @@ class ObservabilityConfig:
     spec_decode_timing: bool = False
     """Enable atomic per-stage timing of speculative decoding (target forward,
     verification, sampling, and per-position draft forwards) via CUDA events.
-    Timings are exported through the spec-decode metrics path. Off by default;
-    when enabled it forces the V1 model runner. Requires log stats to be enabled."""
+    Timings are exported through the spec-decode metrics path. Off by default.
+    V1-only; metrics are produced only when log stats are enabled
+    (``disable_log_stats=False``), otherwise the flag is a silent no-op."""
 
     enable_layerwise_nvtx_tracing: bool = False
     """Enable layerwise NVTX tracing. This traces the execution of each layer or

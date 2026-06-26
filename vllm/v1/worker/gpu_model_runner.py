@@ -643,6 +643,9 @@ class GPUModelRunner(
             enabled=(
                 self.observability_config.spec_decode_timing
                 and self.speculative_config is not None
+                # Only the last PP rank samples/drafts and drains the timer;
+                # other ranks would record events that are never read.
+                and get_pp_group().is_last_rank
             ),
             num_spec_tokens=self.num_spec_tokens,
         )
