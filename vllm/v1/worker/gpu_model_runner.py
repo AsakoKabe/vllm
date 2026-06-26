@@ -647,6 +647,11 @@ class GPUModelRunner(
             num_spec_tokens=self.num_spec_tokens,
         )
         self._spec_decode_timing: SpecDecodeTimingStats | None = None
+        # Inject the timer into the drafter so model-based proposers can time
+        # each per-position draft forward.
+        drafter = getattr(self, "drafter", None)
+        if drafter is not None:
+            drafter.spec_decode_timer = self.spec_decode_timer
 
         # Request states.
         self.requests: dict[str, CachedRequestState] = {}
@@ -4657,6 +4662,7 @@ class GPUModelRunner(
                 else None,
                 num_nans_in_logits=num_nans_in_logits,
                 cudagraph_stats=cudagraph_stats,
+                spec_decode_timing=self._spec_decode_timing,
                 routed_experts=None,
             )
 
