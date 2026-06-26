@@ -2,6 +2,8 @@
 # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
 """Attention layer with PagedAttention and Triton prefix prefill."""
 
+from typing import TYPE_CHECKING
+
 import torch
 
 from vllm import _custom_ops as ops
@@ -21,6 +23,10 @@ from vllm.v1.attention.backends.rocm_attn import (
 )
 
 logger = init_logger(__name__)
+
+if TYPE_CHECKING:
+    from vllm.config.cache import CacheDType
+    from vllm.platforms.interface import DeviceCapability
 
 
 class RocmAiterUnifiedAttentionBackend(RocmAttentionBackend):
@@ -94,6 +100,25 @@ class RocmAiterUnifiedAttentionBackend(RocmAttentionBackend):
             AttentionType.ENCODER_ONLY,
             AttentionType.ENCODER_DECODER,
         )
+
+    @classmethod
+    def supports_combination(
+        cls,
+        head_size: int,
+        dtype: torch.dtype,
+        kv_cache_dtype: "CacheDType | None",
+        block_size: int | None,
+        use_mla: bool,
+        has_sink: bool,
+        use_sparse: bool,
+        use_mm_prefix: bool,
+        device_capability: "DeviceCapability",
+    ) -> str | None:
+        if kv_cache_dtype == "float16" or (
+            kv_cache_dtype in (None, "auto") and dtype == torch.float16
+        ):
+            return "float16 KV cache not supported"
+        return None
 
 
 class RocmAiterUnifiedAttentionImpl(RocmAttentionImpl):

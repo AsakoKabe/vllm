@@ -40,6 +40,7 @@ causes unexpected behavior.
 """
 
 import asyncio
+import os
 import uuid
 from dataclasses import asdict
 
@@ -191,9 +192,11 @@ class TrainModel:
 
 # Build platform-specific env vars for Ray
 ray_env_vars = {
-    # Prevent Ray from setting CUDA_VISIBLE_DEVICES
-    "RAY_EXPERIMENTAL_NOSET_CUDA_ENV_VAR": "1",
+    # Keep full GPU visibility for trainer/vLLM NCCL weight transfer.
+    env_var: "1"
+    for env_var in current_platform.ray_noset_device_env_vars
 }
+os.environ.update(ray_env_vars)
 
 if current_platform.is_rocm():
     # For ROCm, BATCH_INVARIANT vllm is not supported

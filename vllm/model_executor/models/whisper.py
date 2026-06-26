@@ -61,6 +61,7 @@ from vllm.multimodal.processing import (
     PromptReplacement,
     PromptUpdate,
 )
+from vllm.platforms import current_platform
 from vllm.renderers import TokenizeParams
 from vllm.transformers_utils.processor import cached_processor_from_config
 from vllm.utils.jsontree import json_map_leaves
@@ -181,6 +182,13 @@ class WhisperAttention(nn.Module):
                 f"{self.embed_dim} and `num_heads`: {num_heads})."
             )
         self.scaling = self.head_dim**-0.5
+        attn_backend = None
+        if current_platform.is_rocm():
+            from vllm.v1.attention.backends.triton_attn import (
+                TritonAttentionBackend,
+            )
+
+            attn_backend = TritonAttentionBackend
 
         self._init_qkv(embed_dim, bias, quant_config, prefix=prefix)
         self.out_proj = RowParallelLinear(
@@ -207,6 +215,7 @@ class WhisperAttention(nn.Module):
                 quant_config=quant_config,
                 prefix=f"{prefix}.attn",
                 attn_type=self.attn_type,
+                attn_backend=attn_backend,
             )
         else:  # AttentionType.DECODER (regular decoder self-attention)
             self.attn = Attention(
@@ -219,6 +228,7 @@ class WhisperAttention(nn.Module):
                 prefix=f"{prefix}.attn",
                 attn_type=self.attn_type,
                 per_layer_sliding_window=per_layer_sliding_window,
+                attn_backend=attn_backend,
             )
 
     def _init_qkv(
