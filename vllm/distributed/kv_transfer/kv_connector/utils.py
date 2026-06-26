@@ -413,29 +413,38 @@ class TransferTopology:
         self.local_physical_heads = max(1, self.total_num_kv_heads // self.tp_size)
 
         self._engines: dict[tuple[EngineId, int], EngineTransferInfo] = {}
+        self._split_k_and_v = False
 
         # Figure out whether the first dimension of the cache is K/V
         # or num_blocks.
         attn_backend = self.attn_backends[0]
+        kv_cache_shape: tuple[int, ...] = ()
         if not self.is_mamba:
             _MOCK_BLOCK_SIZE = 16
-            kv_cache_shape: tuple[int, ...] = attn_backend.get_kv_cache_shape(
+            kv_cache_shape = attn_backend.get_kv_cache_shape(
                 num_blocks=1,
                 block_size=_MOCK_BLOCK_SIZE,
                 num_kv_heads=1,
                 head_size=1,
             )
             logger.debug("Test kv_cache_shape: %s", kv_cache_shape)
-            assert kv_cache_shape[0] == 1, (
-                "KV cache layout must be blocks-first; expected mocked "
-                f"num_blocks=1 in leading dim, got shape {kv_cache_shape}."
-            )
             if not self.is_mla:
-                assert len(kv_cache_shape) == 4, (
+                is_packed_blocks_first = (
+                    len(kv_cache_shape) == 4 and kv_cache_shape[0] == 1
+                )
+                is_kv_first = (
+                    len(kv_cache_shape) == 5
+                    and kv_cache_shape[0] == 2
+                    and kv_cache_shape[1] == 1
+                )
+                assert is_packed_blocks_first or is_kv_first, (
                     "Attention KV cache layout must be standardized as "
-                    "[num_blocks, num_kv_heads, block_size, content_size], "
+                    "[num_blocks, num_kv_heads, block_size, content_size] "
+                    "or legacy ROCm [2, num_blocks, block_size, "
+                    "num_kv_heads, head_size], "
                     f"got shape {kv_cache_shape}."
                 )
+                self._split_k_and_v = is_kv_first
 
         self._cross_layers_blocks = False
         if self.tensor_shape is not None:
@@ -497,6 +506,10 @@ class TransferTopology:
     @property
     def cross_layers_blocks(self) -> bool:
         return self._cross_layers_blocks
+
+    @property
+    def split_k_and_v(self) -> bool:
+        return self._split_k_and_v and not self._cross_layers_blocks
 
     @property
     def virtually_split_kv_in_blocks(self) -> bool:
@@ -609,6 +622,9 @@ class TransferTopology:
             # backends so its num_blocks first.
             # Swap [2<>num_blocks] dims for hybrid SSM layout.
             cache = cache.transpose(0, 1)
+
+        if self.split_k_and_v:
+            return list(cache.unbind(0))
 
         # K and V are packed into one tensor (content dim), so each layer
         # registers as a single region.
