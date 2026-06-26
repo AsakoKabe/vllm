@@ -95,14 +95,14 @@ def get_metrics_snapshot() -> list[Metric]:
                 )
         elif metric.type == "counter":
             samples = _get_samples(metric, "_total")
-            if metric.name == "vllm:spec_decode_num_accepted_tokens_per_pos":
+            if metric.name.endswith("_per_pos"):
                 #
-                # Ugly vllm:num_accepted_tokens_per_pos special case.
-                #
-                # This metric is a vector of counters - for each spec
-                # decoding token position, we observe the number of
-                # accepted tokens using a Counter labeled with 'position'.
-                # We convert these into a vector of integer values.
+                # Per-position spec-decode counters (e.g.
+                # vllm:spec_decode_num_accepted_tokens_per_pos and the
+                # per-position draft timing counters) are vectors of counters:
+                # for each draft position we observe a value via a Counter
+                # labeled with 'position'. We convert these into a vector of
+                # integer values.
                 #
                 for labels, values in _digest_num_accepted_by_pos_samples(samples):
                     collected.append(
