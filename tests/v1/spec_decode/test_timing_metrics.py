@@ -38,6 +38,7 @@ def test_timing_stats_defaults():
     stats = SpecDecodeTimingStats()
     assert stats.target_forward_ms == 0.0
     assert stats.draft_forward_ms_per_pos == []
+    assert stats.num_verified_positions == 0
 
 
 def test_observe_timing_sets_fields():
@@ -100,8 +101,68 @@ def test_logging_without_timing_skips_timing_line():
 def test_timer_disabled_is_noop():
     timer = SpecDecodeTimer(enabled=False, num_spec_tokens=4)
     timer.begin_step()
+    timer.set_num_verified_positions(7)
     with timer.time_stage("target_forward"):
         pass
     with timer.time_stage("draft", pos=0):
         pass
     assert timer.drain() is None
+
+
+class _FakeEvent:
+    """A CPU stand-in for torch.cuda.Event so the timer logic is testable."""
+
+    def __init__(self, enable_timing: bool = False) -> None:
+        self.recorded = False
+
+    def record(self) -> None:
+        self.recorded = True
+
+    def query(self) -> bool:
+        return True
+
+    def elapsed_time(self, other: "_FakeEvent") -> float:
+        return 1.0
+
+
+def test_timer_double_buffer_one_step_lag(monkeypatch):
+    import torch
+
+    monkeypatch.setattr(torch.cuda, "Event", _FakeEvent)
+    timer = SpecDecodeTimer(enabled=True, num_spec_tokens=2)
+
+    # Step 1 records target_forward and tags positions; nothing to drain yet.
+    timer.begin_step()
+    timer.set_num_verified_positions(3)
+    with timer.time_stage("target_forward"):
+        pass
+    assert timer.drain() is None
+
+    # Step 2 drains step 1's timing (one-step lag).
+    timer.begin_step()
+    with timer.time_stage("verify"):
+        pass
+    drained = timer.drain()
+    assert drained is not None
+    assert drained.target_forward_ms == 1.0
+    assert drained.verify_ms == 0.0  # not recorded in step 1
+    assert drained.num_verified_positions == 3
+
+
+def test_timer_per_position_draft(monkeypatch):
+    import torch
+
+    monkeypatch.setattr(torch.cuda, "Event", _FakeEvent)
+    timer = SpecDecodeTimer(enabled=True, num_spec_tokens=3)
+
+    timer.begin_step()
+    with timer.time_stage("draft", pos=0):
+        pass
+    with timer.time_stage("draft", pos=1):
+        pass
+
+    timer.begin_step()
+    drained = timer.drain()
+    assert drained is not None
+    # Only the two recorded positions are reported.
+    assert drained.draft_forward_ms_per_pos == [1.0, 1.0]

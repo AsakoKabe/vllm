@@ -35,6 +35,9 @@ class SpecDecodeTimingStats:
     sample_ms: float = 0.0
     draft_total_ms: float = 0.0
     draft_forward_ms_per_pos: list[float] = field(default_factory=list)
+    # Target verification microbatch size (sum of K_i + 1 over requests). Used
+    # later to bin T_T by the number of verified positions for the cost model.
+    num_verified_positions: int = 0
 
 
 class _EventPair:
@@ -69,6 +72,7 @@ class _Slot:
         self.scalar = {name: _EventPair() for name in SCALAR_STAGES}
         self.draft_pos = [_EventPair() for _ in range(num_spec_tokens)]
         self.dirty = False
+        self.num_verified_positions = 0
 
     def reset(self) -> None:
         for pair in self.scalar.values():
@@ -76,6 +80,7 @@ class _Slot:
         for pair in self.draft_pos:
             pair.reset()
         self.dirty = False
+        self.num_verified_positions = 0
 
     def ready(self) -> bool:
         pairs = [p for p in self.scalar.values() if p.recorded]
@@ -115,6 +120,12 @@ class SpecDecodeTimer:
             return
         self._write_idx ^= 1
         self._slots[self._write_idx].reset()
+
+    def set_num_verified_positions(self, num_positions: int) -> None:
+        """Tag the current step with its target verification microbatch size."""
+        if not self.enabled:
+            return
+        self._slots[self._write_idx].num_verified_positions = num_positions
 
     @contextlib.contextmanager
     def time_stage(self, stage: str, pos: int | None = None) -> Iterator[None]:
@@ -160,6 +171,7 @@ class SpecDecodeTimer:
             sample_ms=self._read(prev, "sample"),
             draft_total_ms=self._read(prev, "draft_total"),
             draft_forward_ms_per_pos=draft_ms,
+            num_verified_positions=prev.num_verified_positions,
         )
 
     @staticmethod
