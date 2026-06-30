@@ -270,6 +270,44 @@ class SpeculativeConfig:
     during rejection sampling. This comes at the cost of additional GPU memory
     usage."""
 
+    evict_enabled: bool = False
+    """Enable EVICT cost-aware adaptive verification (arXiv:2605.00342). After
+    drafting the K-token chain, EVICT verifies only the first m* tokens, where
+    m* maximizes the utility E[A(m)] / C(m) (estimated accepted length over
+    profiled step cost). Verifying fewer tokens shrinks the target forward and,
+    for an MoE target, the union of activated experts. Lossless: the output
+    distribution is unchanged; only speculation depth is adaptively reduced.
+    Requires a chain draft method (eagle/eagle3/mtp) and
+    draft_sample_method='probabilistic' (draft probabilities must be exposed).
+    Defaults off."""
+
+    evict_cost_table_path: str | None = None
+    """Path to a profiled EVICT cost table C(m), a JSON object mapping
+    verification length m (>= 1, contiguous from 1) to step latency. Build it
+    offline from this build's stage timing (see
+    vllm/v1/spec_decode/evict/build_cost_table.py). If unset, an affine fallback
+    C(m) = evict_cost_intercept + evict_cost_per_token * m is used (heuristic;
+    only the ratio of the two affects m*)."""
+
+    evict_cost_intercept: float = 1.0
+    """Affine-fallback fixed per-step cost (used only when
+    evict_cost_table_path is unset). Must be > 0."""
+
+    evict_cost_per_token: float = 0.5
+    """Affine-fallback marginal cost per verified token (used only when
+    evict_cost_table_path is unset). Must be >= 0."""
+
+    evict_min_k: int = 1
+    """Floor on the verified prefix length when EVICT is enabled, in
+    [1, num_speculative_tokens]. Guarantees at least this many tokens are
+    verified so speculation is never fully collapsed."""
+
+    evict_batch_reduce: Literal["max", "min", "median"] = "max"
+    """How EVICT reduces per-request m* to one batch-uniform length (the MVP
+    truncates the draft tensor uniformly). 'max' is conservative on accepted
+    length; 'min' truncates most aggressively. Exact (no reduction) for
+    batch size 1, the paper's low-latency regime."""
+
     def compute_hash(self) -> str:
         """
         WARNING: Whenever a new field is added to this config,
@@ -1055,7 +1093,53 @@ class SpeculativeConfig:
             )
 
         self.verify_equal_vocab_size_if_draft_model()
+
+        if self.evict_enabled:
+            self._verify_evict_args()
         return self
+
+    def _verify_evict_args(self) -> None:
+        """Fail-closed validation for EVICT adaptive verification."""
+        if self.method not in ("eagle", "eagle3", "mtp"):
+            raise ValueError(
+                "evict_enabled requires a chain draft method "
+                f"(eagle/eagle3/mtp); got method={self.method!r}."
+            )
+        if self.draft_sample_method != "probabilistic":
+            raise ValueError(
+                "evict_enabled requires draft_sample_method='probabilistic' so "
+                "draft probabilities are exposed; greedy draft sampling does not "
+                "expose them. Set draft_sample_method='probabilistic'."
+            )
+        assert self.num_speculative_tokens is not None
+        if not 1 <= self.evict_min_k <= self.num_speculative_tokens:
+            raise ValueError(
+                f"evict_min_k must be in [1, num_speculative_tokens="
+                f"{self.num_speculative_tokens}], got {self.evict_min_k}."
+            )
+        if self.evict_cost_table_path is None:
+            if self.evict_cost_intercept <= 0.0:
+                raise ValueError(
+                    "evict_cost_intercept must be > 0, got "
+                    f"{self.evict_cost_intercept}."
+                )
+            if self.evict_cost_per_token < 0.0:
+                raise ValueError(
+                    "evict_cost_per_token must be >= 0, got "
+                    f"{self.evict_cost_per_token}."
+                )
+        else:
+            # Fail closed at startup if the table is missing or malformed.
+            from vllm.v1.spec_decode.evict.cost_table import CostTable
+
+            table = CostTable.from_file(self.evict_cost_table_path)
+            covered = table.max_profiled_m or 0
+            if covered < self.num_speculative_tokens:
+                raise ValueError(
+                    f"EVICT cost table {self.evict_cost_table_path} covers m up to "
+                    f"{covered} but num_speculative_tokens="
+                    f"{self.num_speculative_tokens}; profile a deeper table."
+                )
 
     def verify_equal_vocab_size_if_draft_model(self):
         if (

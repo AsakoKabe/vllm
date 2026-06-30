@@ -180,6 +180,11 @@ from vllm.v1.spec_decode.custom_class_proposer import create_custom_proposer
 from vllm.v1.spec_decode.dflash import DFlashProposer
 from vllm.v1.spec_decode.draft_model import DraftModelProposer
 from vllm.v1.spec_decode.eagle import EagleProposer
+from vllm.v1.spec_decode.evict.selector import (
+    gather_draft_confidence,
+    reduce_batch_kstar,
+    select_kstar,
+)
 from vllm.v1.spec_decode.extract_hidden_states import ExtractHiddenStatesProposer
 from vllm.v1.spec_decode.gemma4 import Gemma4Proposer
 from vllm.v1.spec_decode.medusa import MedusaProposer
@@ -655,6 +660,46 @@ class GPUModelRunner(
         drafter = getattr(self, "drafter", None)
         if drafter is not None:
             drafter.spec_decode_timer = self.spec_decode_timer
+
+        # EVICT: cost-aware adaptive verification (arXiv:2605.00342). After
+        # drafting the K-token chain, verify only the first m* tokens, where m*
+        # maximizes E[A(m)] / C(m). See vllm/v1/spec_decode/evict.
+        self._evict_cost_table = None
+        self._evict_cost_per_m: torch.Tensor | None = None
+        self._evict_steps = 0
+        self._evict_saved_positions = 0
+        self._evict_kstar_sum = 0
+        evict_enabled = bool(
+            self.speculative_config is not None
+            and getattr(self.speculative_config, "evict_enabled", False)
+        )
+        # EVICT truncation is wired through the synchronous draft-token path
+        # (DraftTokenIds). The async GPU-driven correction assumes a uniform K
+        # stride that the MVP does not touch, so gate to sync scheduling.
+        self._evict_active = evict_enabled and not self.use_async_spec_decode
+        if evict_enabled and not self._evict_active:
+            logger.warning(
+                "EVICT is enabled but async speculative scheduling is active; "
+                "EVICT truncation is disabled. Disable async scheduling to use "
+                "EVICT."
+            )
+        if self._evict_active:
+            from vllm.v1.spec_decode.evict.cost_table import CostTable
+
+            sc = self.speculative_config
+            if sc.evict_cost_table_path is not None:
+                self._evict_cost_table = CostTable.from_file(sc.evict_cost_table_path)
+            else:
+                self._evict_cost_table = CostTable.affine(
+                    sc.evict_cost_intercept, sc.evict_cost_per_token
+                )
+                logger.warning(
+                    "EVICT using affine cost fallback C(m) = %.4g + %.4g*m "
+                    "(no evict_cost_table_path); profile a real table for "
+                    "accurate m* selection.",
+                    sc.evict_cost_intercept,
+                    sc.evict_cost_per_token,
+                )
 
         # Request states.
         self.requests: dict[str, CachedRequestState] = {}
@@ -4534,6 +4579,10 @@ class GPUModelRunner(
                         spec_decode_common_attn_metadata,
                         slot_mappings,
                     )
+                # EVICT: trim the verified prefix before shipping drafts to the
+                # scheduler (decided from this step's draft probs, applied to
+                # next step's target verify).
+                self._apply_evict_truncation()
                 self._copy_draft_token_ids_to_cpu(scheduler_output)
 
         spec_config = self.speculative_config
@@ -4832,6 +4881,82 @@ class GPUModelRunner(
         return self.draft_token_ids_cpu[
             : len(req_ids), :num_spec_tokens
         ].tolist(), req_ids
+
+    def _apply_evict_truncation(self) -> None:
+        """EVICT: trim the drafted chain to its cost-effective prefix m*.
+
+        Runs after drafting (``_draft_token_ids`` / ``_draft_probs`` set) and
+        before the draft tokens are shipped to the scheduler, so the next target
+        forward verifies only m* positions. Lossless: only speculation depth is
+        reduced. No-op without exposed draft probabilities (e.g. greedy drafts).
+        """
+        if not self._evict_active:
+            return
+        draft = self._draft_token_ids
+        probs = self._draft_probs
+        if not torch.is_tensor(draft):
+            return
+        if probs is None:
+            # Greedy batches don't expose draft probabilities, so EVICT cannot
+            # score them. Surface it once so an enabled-but-inactive EVICT is not
+            # silent (e.g. all requests at temperature=0).
+            logger.warning_once(
+                "EVICT is enabled but draft probabilities are unavailable "
+                "(fully greedy batch); EVICT is inactive this step. Use "
+                "temperature > 0 to benefit from EVICT."
+            )
+            return
+        num_reqs, num_spec = draft.shape
+        min_k = self.speculative_config.evict_min_k
+        if num_reqs == 0 or num_spec <= min_k:
+            return
+
+        assert self._evict_cost_table is not None
+        covered = self._evict_cost_table.max_profiled_m
+        if covered is not None and num_spec > covered:
+            # Dynamic SD can schedule a deeper chain than the profiled table
+            # covers; skip rather than crash mid-serving.
+            logger.warning_once(
+                "EVICT cost table covers m up to %d but the draft length is "
+                "%d; EVICT is inactive for these steps. Profile a deeper table.",
+                covered,
+                num_spec,
+            )
+            return
+
+        if (
+            self._evict_cost_per_m is None
+            or self._evict_cost_per_m.shape[0] != num_spec
+            or self._evict_cost_per_m.device != draft.device
+        ):
+            self._evict_cost_per_m = self._evict_cost_table.as_tensor(
+                num_spec, device=draft.device
+            )
+
+        confidence = gather_draft_confidence(probs, draft)
+        kstar = select_kstar(confidence, self._evict_cost_per_m, min_k)
+        # Single scalar sync per step (MVP overhead; fused on-GPU in the full
+        # CUDA-graph version).
+        m = reduce_batch_kstar(kstar, self.speculative_config.evict_batch_reduce)
+
+        self._evict_steps += 1
+        self._evict_kstar_sum += m
+        self._evict_saved_positions += (num_spec - m) * num_reqs
+        if self._evict_steps % 256 == 0:
+            logger.info(
+                "EVICT: mean m*=%.2f over %d steps (K=%d), saved %d verify "
+                "positions",
+                self._evict_kstar_sum / self._evict_steps,
+                self._evict_steps,
+                num_spec,
+                self._evict_saved_positions,
+            )
+
+        if m < num_spec:
+            self._draft_token_ids = draft[:, :m].contiguous()
+            # Copy (not view): the proposer's draft-probs buffer may be reused
+            # next step, which would otherwise corrupt this slice.
+            self._draft_probs = probs[:, :m, :].contiguous()
 
     def _copy_valid_sampled_token_count(
         self, next_token_ids: torch.Tensor, valid_sampled_tokens_count: torch.Tensor
