@@ -42,6 +42,9 @@ class SpecDecodingStats:
     sample_ms: float = 0.0
     draft_total_ms: float = 0.0
     draft_forward_ms_per_pos: list[float] = field(default_factory=list)
+    # Layer-averaged distinct-expert count (Ū_r) over the verification
+    # microbatch; 0.0 for dense targets or when routing capture is unavailable.
+    avg_distinct_experts: float = 0.0
 
     @classmethod
     def new(cls, num_spec_tokens: int) -> "SpecDecodingStats":
@@ -69,6 +72,7 @@ class SpecDecodingStats:
         self.sample_ms = timing.sample_ms
         self.draft_total_ms = timing.draft_total_ms
         self.draft_forward_ms_per_pos = list(timing.draft_forward_ms_per_pos)
+        self.avg_distinct_experts = timing.avg_distinct_experts
 
 
 class SpecDecodingLogging:
@@ -96,6 +100,7 @@ class SpecDecodingLogging:
         self.sample_ms: list[float] = []
         self.draft_total_ms: list[float] = []
         self.draft_forward_ms_per_pos_lists: list[list[float]] = []
+        self.avg_distinct_experts: list[float] = []
         self.last_log_time = time.monotonic()
 
     def observe(self, spec_decoding_stats: SpecDecodingStats):
@@ -113,6 +118,7 @@ class SpecDecodingLogging:
             self.draft_forward_ms_per_pos_lists.append(
                 spec_decoding_stats.draft_forward_ms_per_pos
             )
+            self.avg_distinct_experts.append(spec_decoding_stats.avg_distinct_experts)
 
     def log(self, log_fn=logger.info):
         if not self.num_drafts:
@@ -182,16 +188,22 @@ class SpecDecodingLogging:
         sample = float(np.sum(self.sample_ms)) / n
         per_pos = self._mean_per_pos(self.draft_forward_ms_per_pos_lists)
         per_pos_str = ", ".join(f"{p:.3f}" for p in per_pos)
+        avg_experts = (
+            float(np.sum(self.avg_distinct_experts)) / n
+            if self.avg_distinct_experts
+            else 0.0
+        )
         log_fn(
             "SpecDecoding timing (mean ms/step over %d steps): "
             "target_forward: %.3f, draft_total: %.3f, verify: %.3f, "
-            "sample: %.3f, per-position draft: [%s]",
+            "sample: %.3f, per-position draft: [%s], avg_distinct_experts: %.2f",
             n,
             target,
             draft,
             verify,
             sample,
             per_pos_str,
+            avg_experts,
         )
 
     @staticmethod
@@ -360,6 +372,11 @@ class SpecDecodingProm:
                 "vllm:spec_decode_num_timed_steps",
                 "Number of speculative steps with recorded timing.",
             ),
+            (
+                "vllm:spec_decode_distinct_experts_milli",
+                "Layer-averaged distinct experts (Ū_r) x1000, summed over timed "
+                "steps; mean Ū_r = value / 1000 / num_timed_steps.",
+            ),
         ]
         timing_counters = [
             create_metric_per_engine(
@@ -374,6 +391,7 @@ class SpecDecodingProm:
             "sample": timing_counters[2],
             "draft_total": timing_counters[3],
             "num_timed_steps": timing_counters[4],
+            "distinct_experts": timing_counters[5],
         }
         num_spec_tokens = (
             speculative_config.num_speculative_tokens
@@ -424,6 +442,9 @@ class SpecDecodingProm:
             _ms_to_us(spec_decoding_stats.draft_total_ms)
         )
         timing["num_timed_steps"][engine_idx].inc(1)
+        timing["distinct_experts"][engine_idx].inc(
+            int(round(spec_decoding_stats.avg_distinct_experts * 1000))
+        )
         per_pos = self.counter_spec_decode_draft_forward_us_per_pos.get(engine_idx, [])
         for pos, value in enumerate(spec_decoding_stats.draft_forward_ms_per_pos):
             if pos < len(per_pos):

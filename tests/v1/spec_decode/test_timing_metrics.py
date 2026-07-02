@@ -6,12 +6,18 @@ These cover the host-side aggregation logic and the disabled-timer path; the
 CUDA-event timing itself requires a GPU and is exercised in integration tests.
 """
 
+import numpy as np
+
 from vllm.v1.spec_decode.metrics import (
     SpecDecodingLogging,
     SpecDecodingStats,
     _ms_to_us,
 )
-from vllm.v1.spec_decode.timing import SpecDecodeTimer, SpecDecodeTimingStats
+from vllm.v1.spec_decode.timing import (
+    SpecDecodeTimer,
+    SpecDecodeTimingStats,
+    compute_avg_distinct_experts,
+)
 
 
 def _timing(
@@ -188,3 +194,50 @@ def test_timer_drain_skips_until_events_complete(monkeypatch):
     # device, so drain() must return None without reading elapsed_time.
     timer.begin_step()
     assert timer.drain() is None
+
+
+def test_timing_stats_avg_distinct_experts_default():
+    assert SpecDecodeTimingStats().avg_distinct_experts == 0.0
+
+
+def test_compute_avg_distinct_experts():
+    # 2 tokens, 3 layers, top_k=2.
+    # layer 0: {1, 2, 3} -> 3 distinct; layer 1: {4, 5} -> 2 distinct;
+    # layer 2: all-zero (dense/unused) -> excluded.
+    routing = np.array(
+        [
+            [[1, 2], [4, 5], [0, 0]],
+            [[3, 1], [4, 5], [0, 0]],
+        ],
+        dtype=np.int32,
+    )
+    assert compute_avg_distinct_experts(routing) == (3 + 2) / 2
+
+
+def test_compute_avg_distinct_experts_expert_zero_counts():
+    # Expert id 0 is valid when the layer also routes to other experts.
+    routing = np.array([[[0, 1]], [[0, 2]]], dtype=np.int32)  # {0, 1, 2}
+    assert compute_avg_distinct_experts(routing) == 3.0
+
+
+def test_compute_avg_distinct_experts_empty_or_dense():
+    assert compute_avg_distinct_experts(np.zeros((0, 4, 2), dtype=np.int32)) == 0.0
+    # Fully dense target (every layer all-zero) -> no MoE layers -> 0.0.
+    assert compute_avg_distinct_experts(np.zeros((3, 4, 2), dtype=np.int32)) == 0.0
+
+
+def test_timer_avg_distinct_experts_roundtrip(monkeypatch):
+    import torch
+
+    monkeypatch.setattr(torch.cuda, "Event", _FakeEvent)
+    timer = SpecDecodeTimer(enabled=True, num_spec_tokens=2)
+
+    timer.begin_step()
+    timer.set_avg_distinct_experts(42.5)
+    with timer.time_stage("target_forward"):
+        pass
+
+    timer.begin_step()
+    drained = timer.drain()
+    assert drained is not None
+    assert drained.avg_distinct_experts == 42.5
