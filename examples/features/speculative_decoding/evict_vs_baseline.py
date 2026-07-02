@@ -161,6 +161,16 @@ def parse_args():
         choices=["max", "min", "median"],
     )
     parser.add_argument(
+        "--evict-allowed-kstar",
+        type=str,
+        default=None,
+        help="Comma-separated allowed m* lengths (e.g. '1,4,8'). Quantizes the "
+        "selector to this set and captures FULL CUDA graphs for the matching "
+        "verify lengths, so truncated verifies keep full-graph replay and T_T "
+        "actually scales with m*. Unset = no quantization (truncated verifies "
+        "fall to PIECEWISE padded to K+1 and save no wall-clock).",
+    )
+    parser.add_argument(
         "--skip-ar",
         action="store_true",
         help="Skip the vanilla-AR baseline (report only EVICT-vs-baseline ratio).",
@@ -216,6 +226,10 @@ def build_speculative_config(args, evict_enabled: bool) -> dict:
             evict_min_k=args.evict_min_k,
             evict_batch_reduce=args.evict_batch_reduce,
         )
+        if args.evict_allowed_kstar:
+            cfg["evict_allowed_kstar"] = [
+                int(m) for m in args.evict_allowed_kstar.split(",")
+            ]
     return cfg
 
 

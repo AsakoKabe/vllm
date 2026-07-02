@@ -74,16 +74,25 @@ def select_kstar(
     # [K]
     cost_per_m: torch.Tensor,
     min_k: int = 1,
+    # [K] bool; True at index m-1 iff length m may be chosen.
+    allowed_mask: torch.Tensor | None = None,
 ) -> torch.Tensor:
     """Per-request optimal verification length ``m*``.
 
-    ``m* = argmax_{m in [min_k, K]} E[A(m)] / C(m)``.
+    ``m* = argmax_{m in [min_k, K]} E[A(m)] / C(m)``, optionally restricted to an
+    allowed set of lengths (quantized m*): with ``allowed_mask`` given, the
+    argmax runs only over lengths whose mask entry is True, so the choice is
+    cost-optimal within the set rather than a post-hoc rounding. Used to keep
+    the set of verify lengths small enough to capture a FULL CUDA graph per
+    length.
 
     Args:
         confidence: ``q`` of shape ``[B, K]`` in ``[0, 1]``.
         cost_per_m: ``C(m)`` for ``m in 1..K``, shape ``[K]``, strictly positive.
         min_k: Floor on the chosen length (>= 1); guarantees at least ``min_k``
             tokens are verified so EVICT never collapses speculation entirely.
+        allowed_mask: Optional bool mask of shape ``[K]``; must have at least one
+            True entry at an index ``>= min_k - 1``.
 
     Returns:
         ``kstar`` of shape ``[B]`` (int64) with values in ``[min_k, K]``.
@@ -106,10 +115,26 @@ def select_kstar(
     cost = cost_per_m.to(device=ehat.device, dtype=ehat.dtype).clamp_min(1e-9)
     utility = ehat / cost.view(1, num_spec)
 
-    # Restrict the argmax to m >= min_k by masking shorter prefixes.
-    if min_k > 1:
+    # Restrict the argmax to m >= min_k (and to the allowed set, if given) by
+    # masking out disallowed prefixes.
+    if min_k > 1 or allowed_mask is not None:
         utility = utility.clone()
-        utility[:, : min_k - 1] = float("-inf")
+        if min_k > 1:
+            utility[:, : min_k - 1] = float("-inf")
+        if allowed_mask is not None:
+            if allowed_mask.shape != (num_spec,):
+                raise ValueError(
+                    f"allowed_mask must be [K]={num_spec}, got "
+                    f"{tuple(allowed_mask.shape)}"
+                )
+            if not bool(allowed_mask[min_k - 1 :].any()):
+                raise ValueError(
+                    f"allowed_mask has no selectable length >= min_k={min_k}"
+                )
+            utility.masked_fill_(
+                ~allowed_mask.to(device=utility.device).view(1, num_spec),
+                float("-inf"),
+            )
 
     kstar = utility.argmax(dim=1) + 1  # argmax index m-1 -> m
     return kstar.to(torch.int64).clamp_(min_k, num_spec)

@@ -308,6 +308,16 @@ class SpeculativeConfig:
     length; 'min' truncates most aggressively. Exact (no reduction) for
     batch size 1, the paper's low-latency regime."""
 
+    evict_allowed_kstar: list[int] | None = None
+    """Quantize EVICT's m* to this set of lengths (e.g. [1, 4, 8] for K=8) and
+    capture FULL CUDA graphs for the matching verify lengths (m+1 query
+    tokens). Without it, a truncated verify falls out of the uniform-decode
+    CUDA-graph path (which is sized only for K+1) into PIECEWISE, padded back
+    to K+1 granularity, so the truncation saves no wall-clock time. The
+    selector picks the cost-optimal m* within this set. Values must be unique,
+    in [1, num_speculative_tokens], and at least one must be >= evict_min_k.
+    None (default) = no quantization and no extra graphs."""
+
     def compute_hash(self) -> str:
         """
         WARNING: Whenever a new field is added to this config,
@@ -1117,6 +1127,25 @@ class SpeculativeConfig:
                 f"evict_min_k must be in [1, num_speculative_tokens="
                 f"{self.num_speculative_tokens}], got {self.evict_min_k}."
             )
+        if self.evict_allowed_kstar is not None:
+            allowed = self.evict_allowed_kstar
+            if not allowed or len(set(allowed)) != len(allowed):
+                raise ValueError(
+                    f"evict_allowed_kstar must be a non-empty set of unique "
+                    f"lengths, got {allowed}."
+                )
+            if not all(1 <= m <= self.num_speculative_tokens for m in allowed):
+                raise ValueError(
+                    f"evict_allowed_kstar values must be in [1, "
+                    f"num_speculative_tokens={self.num_speculative_tokens}], "
+                    f"got {allowed}."
+                )
+            if max(allowed) < self.evict_min_k:
+                raise ValueError(
+                    f"evict_allowed_kstar={allowed} has no length >= "
+                    f"evict_min_k={self.evict_min_k}; the selector would have "
+                    f"no valid choice."
+                )
         if self.evict_cost_table_path is None:
             if self.evict_cost_intercept <= 0.0:
                 raise ValueError(

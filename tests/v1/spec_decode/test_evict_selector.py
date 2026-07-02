@@ -88,3 +88,51 @@ def test_reduce_batch_kstar_policies():
     assert reduce_batch_kstar(kstar, "median") == 3
     with pytest.raises(ValueError):
         reduce_batch_kstar(kstar, "bogus")
+
+
+def test_select_kstar_allowed_mask_quantizes_to_set():
+    conf = torch.tensor([[0.9, 0.8, 0.5]])
+    cost = torch.tensor([1.0, 1.5, 2.0])
+    # Unrestricted argmax is m=2 (see test_select_kstar_picks_utility_peak);
+    # with only {1, 3} allowed the best of the set must be chosen instead.
+    mask = torch.tensor([True, False, True])
+    kstar = select_kstar(conf, cost, min_k=1, allowed_mask=mask)
+    # U = [0.9, -, 0.99] -> m=3
+    assert kstar.tolist() == [3]
+
+
+def test_select_kstar_allowed_mask_respects_min_k():
+    conf = torch.tensor([[0.99, 0.9, 0.1]])
+    cost = torch.tensor([1.0, 1.1, 1.2])
+    # m=1 is allowed but below min_k=2; the selector must pick from
+    # allowed ∩ [min_k, K] = {2}.
+    mask = torch.tensor([True, True, False])
+    kstar = select_kstar(conf, cost, min_k=2, allowed_mask=mask)
+    assert kstar.tolist() == [2]
+
+
+def test_select_kstar_allowed_mask_no_valid_choice_raises():
+    conf = torch.tensor([[0.9, 0.8, 0.5]])
+    cost = torch.tensor([1.0, 1.5, 2.0])
+    # Only m=1 allowed but min_k=2 -> empty intersection must raise, matching
+    # the config-level validation.
+    mask = torch.tensor([True, False, False])
+    with pytest.raises(ValueError, match="no selectable length"):
+        select_kstar(conf, cost, min_k=2, allowed_mask=mask)
+
+
+def test_select_kstar_allowed_mask_shape_validated():
+    conf = torch.tensor([[0.9, 0.8, 0.5]])
+    cost = torch.tensor([1.0, 1.5, 2.0])
+    with pytest.raises(ValueError, match="allowed_mask"):
+        select_kstar(conf, cost, allowed_mask=torch.tensor([True, False]))
+
+
+def test_reduce_batch_kstar_stays_in_allowed_set():
+    # max/min/median of per-request kstar values that all lie in an allowed
+    # set return an element of the tensor, so the batch-uniform m stays in
+    # the set (torch.median returns the lower middle element, not a mean).
+    kstar = torch.tensor([1, 4, 4, 8])
+    assert reduce_batch_kstar(kstar, "max") == 8
+    assert reduce_batch_kstar(kstar, "min") == 1
+    assert reduce_batch_kstar(kstar, "median") == 4

@@ -688,6 +688,12 @@ class GPUModelRunner(
                 "EVICT truncation is disabled. Disable async scheduling to use "
                 "EVICT."
             )
+        # Quantized m* (evict_allowed_kstar): the selector is restricted to
+        # these lengths, and FULL cudagraphs are captured for the matching
+        # verify query lens (m+1) so truncated verifies keep full-graph replay.
+        self._evict_allowed_kstar: list[int] | None = None
+        self._evict_allowed_mask: torch.Tensor | None = None
+        self._evict_query_lens: frozenset[int] = frozenset()
         if self._evict_active:
             from vllm.v1.spec_decode.evict.cost_table import CostTable
 
@@ -704,6 +710,13 @@ class GPUModelRunner(
                     "accurate m* selection.",
                     sc.evict_cost_intercept,
                     sc.evict_cost_per_token,
+                )
+            if sc.evict_allowed_kstar is not None:
+                self._evict_allowed_kstar = sorted(sc.evict_allowed_kstar)
+                self._evict_query_lens = frozenset(
+                    m + 1
+                    for m in self._evict_allowed_kstar
+                    if m + 1 != self.uniform_decode_query_len
                 )
 
         # Request states.
@@ -3920,6 +3933,26 @@ class GPUModelRunner(
             num_reqs=num_reqs,
             force_uniform_decode=force_uniform_decode,
         )
+        # The uniform query length of this batch. Under classification or
+        # forced-uniform capture it equals max_num_scheduled_tokens (== 1+K in
+        # the default class, == q for an extra EVICT length class).
+        uniform_query_len = (
+            max_num_scheduled_tokens
+            if uniform_decode
+            else self.uniform_decode_query_len
+        )
+        if (
+            not uniform_decode
+            and force_uniform_decode is None
+            and self._evict_query_lens
+            and max_num_scheduled_tokens in self._evict_query_lens
+            and num_tokens == max_num_scheduled_tokens * num_reqs
+        ):
+            # EVICT-truncated verify: every request schedules exactly m*+1
+            # tokens for an allowed m*. Dispatch it as uniform decode with its
+            # own query_len so it hits the FULL graph captured for that length.
+            uniform_decode = True
+            uniform_query_len = max_num_scheduled_tokens
         # Encoder-decoder models only support CG for decoder_step > 0 (no enc_output
         # is present). Also, chunked-prefill is disabled, so batch are uniform.
         has_encoder_output = (
@@ -3944,6 +3977,7 @@ class GPUModelRunner(
                 num_active_loras=num_active_loras,
                 valid_modes={CUDAGraphMode.NONE} if force_eager else valid_modes,
                 invalid_modes={CUDAGraphMode.FULL} if disable_full else None,
+                uniform_query_len=uniform_query_len,
             )
 
         cudagraph_mode, batch_descriptor = dispatch_cudagraph(
@@ -4955,8 +4989,28 @@ class GPUModelRunner(
                 num_spec, device=draft.device
             )
 
+        allowed_mask = None
+        if self._evict_allowed_kstar is not None:
+            if (
+                self._evict_allowed_mask is None
+                or self._evict_allowed_mask.shape[0] != num_spec
+                or self._evict_allowed_mask.device != draft.device
+            ):
+                mask = torch.zeros(num_spec, dtype=torch.bool)
+                for allowed_m in self._evict_allowed_kstar:
+                    if allowed_m <= num_spec:
+                        mask[allowed_m - 1] = True
+                if not bool(mask[min_k - 1 :].any()):
+                    # Dynamic SD scheduled a chain shorter than every allowed
+                    # length >= min_k; nothing valid to select, skip the step.
+                    return
+                self._evict_allowed_mask = mask.to(draft.device)
+            allowed_mask = self._evict_allowed_mask
+
         confidence = gather_draft_confidence(probs, draft)
-        kstar = select_kstar(confidence, self._evict_cost_per_m, min_k)
+        kstar = select_kstar(
+            confidence, self._evict_cost_per_m, min_k, allowed_mask=allowed_mask
+        )
         # Single scalar sync per step (MVP overhead; fused on-GPU in the full
         # CUDA-graph version).
         m = reduce_batch_kstar(kstar, self.speculative_config.evict_batch_reduce)
@@ -5860,6 +5914,7 @@ class GPUModelRunner(
         is_graph_capturing: bool = False,
         num_active_loras: int = 0,
         profile_seq_lens: int | None = None,
+        uniform_query_len: int | None = None,
     ) -> tuple[torch.Tensor, torch.Tensor]:
         """
         Run a dummy forward pass to warm up/profile run or capture the
@@ -5912,7 +5967,13 @@ class GPUModelRunner(
         # When setting max_query_len = 1, we switch to and capture the optimized
         # routine of FA2 for pure decode, i.e., Flashdecode + an optimization
         # for GQA/MQA.
-        max_query_len = self.uniform_decode_query_len if uniform_decode else num_tokens
+        # uniform_query_len overrides the default for the extra EVICT length
+        # classes (capture at q = m*+1 != 1+K).
+        max_query_len = (
+            (uniform_query_len or self.uniform_decode_query_len)
+            if uniform_decode
+            else num_tokens
+        )
 
         # Set num_scheduled_tokens based on num_tokens and max_num_seqs
         # for dummy run with LoRA so that the num_reqs collectively
@@ -6850,6 +6911,12 @@ class GPUModelRunner(
         if num_warmups is None:
             num_warmups = self.compilation_config.cudagraph_num_of_warmups
         force_attention = cudagraph_runtime_mode == CUDAGraphMode.FULL
+        # The descriptor encodes its uniform query length as num_tokens /
+        # num_reqs (exact for the extra EVICT length classes; equals
+        # 1 + num_spec_tokens for the default class).
+        uniform_query_len = (
+            desc.num_tokens // desc.num_reqs if desc.uniform and desc.num_reqs else None
+        )
         for _ in range(num_warmups):
             self._dummy_run(
                 desc.num_tokens,
@@ -6861,6 +6928,7 @@ class GPUModelRunner(
                 remove_lora=False,
                 num_active_loras=desc.num_active_loras,
                 profile_seq_lens=profile_seq_lens,
+                uniform_query_len=uniform_query_len,
             )
         self._dummy_run(
             desc.num_tokens,
@@ -6872,6 +6940,7 @@ class GPUModelRunner(
             num_active_loras=desc.num_active_loras,
             is_graph_capturing=True,
             profile_seq_lens=profile_seq_lens,
+            uniform_query_len=uniform_query_len,
         )
 
     def _capture_cudagraphs(
@@ -7103,8 +7172,28 @@ class GPUModelRunner(
         )
         # Trigger cudagraph dispatching keys initialization after
         # resolved cudagraph mode.
+        # Extra uniform-decode length classes for EVICT quantized m*. Gated to
+        # single-DP / no-SP: DP ranks sync only (num_tokens, uniform, mode), so
+        # a per-rank query_len cannot be coordinated, and SP padding can move
+        # num_tokens off a multiple of the length.
+        evict_extra_query_lens: tuple[int, ...] = ()
+        if self._evict_query_lens:
+            if (
+                self.parallel_config.data_parallel_size > 1
+                or self.compilation_config.pass_config.enable_sp
+            ):
+                logger.warning(
+                    "evict_allowed_kstar CUDA graphs are disabled under "
+                    "data parallelism or sequence parallelism; truncated "
+                    "verifies will fall back to PIECEWISE."
+                )
+                self._evict_query_lens = frozenset()
+            else:
+                evict_extra_query_lens = tuple(sorted(self._evict_query_lens))
         self.cudagraph_dispatcher.initialize_cudagraph_keys(
-            cudagraph_mode, self.uniform_decode_query_len
+            cudagraph_mode,
+            self.uniform_decode_query_len,
+            extra_uniform_query_lens=evict_extra_query_lens,
         )
 
         # Initialize drafter's cudagraph dispatcher if using spec decode.

@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
+import bisect
 from collections.abc import Set as AbstractSet
 from dataclasses import replace
 from itertools import product
@@ -35,6 +36,11 @@ class CudagraphDispatcher:
         self.vllm_config = vllm_config
         self.compilation_config = vllm_config.compilation_config
         self.uniform_decode_query_len = 1 + self.vllm_config.num_speculative_tokens
+
+        # Extra uniform-decode length classes (EVICT quantized m*): query_len ->
+        # sorted num_tokens sizes with FULL graphs. Padding for these classes
+        # bisects into the per-length list instead of _bs_to_padded_graph_size.
+        self._extra_uniform_sizes: dict[int, list[int]] = {}
 
         # Dict to store valid cudagraph dispatching keys.
         self.cudagraph_keys: dict[CUDAGraphMode, set[BatchDescriptor]] = {
@@ -135,14 +141,43 @@ class CudagraphDispatcher:
         uniform_decode: bool,
         has_lora: bool,
         num_active_loras: int = 0,
+        uniform_query_len: int | None = None,
     ) -> BatchDescriptor:
         max_num_seqs = self.vllm_config.scheduler_config.max_num_seqs
-        uniform_decode_query_len = self.uniform_decode_query_len
+        query_len = uniform_query_len or self.uniform_decode_query_len
+
+        if (
+            uniform_decode
+            and query_len != self.uniform_decode_query_len
+            and self.cudagraph_mode.has_mode(CUDAGraphMode.FULL)
+        ):
+            # Extra uniform length class (EVICT quantized m*): pad into the
+            # per-length size list. No graph for this length/token count ->
+            # fall through to the non-uniform (piecewise) path below, which is
+            # today's behavior for truncated verifies.
+            sizes = self._extra_uniform_sizes.get(query_len)
+            if sizes:
+                idx = bisect.bisect_left(sizes, num_tokens)
+                if idx < len(sizes):
+                    num_tokens_padded = sizes[idx]
+                    num_reqs = num_tokens_padded // query_len
+                    assert num_tokens_padded % query_len == 0
+                    return BatchDescriptor(
+                        num_tokens=num_tokens_padded,
+                        num_reqs=num_reqs,
+                        uniform=True,
+                        has_lora=has_lora,
+                        num_active_loras=num_active_loras,
+                    )
+            uniform_decode = False
+
         num_tokens_padded = self._bs_to_padded_graph_size[num_tokens]
 
         if uniform_decode and self.cudagraph_mode.has_mode(CUDAGraphMode.FULL):
-            num_reqs = min(num_tokens_padded // uniform_decode_query_len, max_num_seqs)
-            assert num_tokens_padded % uniform_decode_query_len == 0
+            num_reqs = min(
+                num_tokens_padded // self.uniform_decode_query_len, max_num_seqs
+            )
+            assert num_tokens_padded % self.uniform_decode_query_len == 0
         else:
             uniform_decode = False
             num_reqs = min(num_tokens_padded, max_num_seqs)
@@ -164,7 +199,10 @@ class CudagraphDispatcher:
         self.cudagraph_keys[runtime_mode].add(batch_descriptor)
 
     def initialize_cudagraph_keys(
-        self, cudagraph_mode: CUDAGraphMode, uniform_decode_query_len: int = 1
+        self,
+        cudagraph_mode: CUDAGraphMode,
+        uniform_decode_query_len: int = 1,
+        extra_uniform_query_lens: tuple[int, ...] = (),
     ):
         # This should be called only after attention backend is initialized. So we can
         # get the correct cudagraph mode after backend support is resolved.
@@ -230,6 +268,43 @@ class CudagraphDispatcher:
                     ),
                 )
 
+            # Extra uniform length classes (EVICT quantized m*): register FULL
+            # keys at a thin, power-of-two request-count grid per length. Sizes
+            # are exact multiples of the length and capped at q*max_num_seqs so
+            # (num_tokens, num_reqs) encodes the query_len injectively.
+            max_size = self.compilation_config.max_cudagraph_capture_size
+            assert max_size is not None
+            max_num_seqs = self.vllm_config.scheduler_config.max_num_seqs
+            for q in extra_uniform_query_lens:
+                if q == uniform_decode_query_len or q < 1:
+                    continue
+                sizes = []
+                bs = 1
+                while bs <= max_num_seqs and q * bs <= max_size:
+                    sizes.append(q * bs)
+                    bs *= 2
+                if not sizes:
+                    continue
+                self._extra_uniform_sizes[q] = sizes
+                for size, num_active_loras in product(sizes, lora_cases):
+                    self.add_cudagraph_key(
+                        CUDAGraphMode.FULL,
+                        self._create_padded_batch_descriptor(
+                            size,
+                            True,
+                            num_active_loras > 0,
+                            num_active_loras,
+                            uniform_query_len=q,
+                        ),
+                    )
+                logger.info(
+                    "Registered %d extra FULL cudagraph keys for uniform "
+                    "query_len=%d (num_tokens sizes: %s)",
+                    len(sizes) * len(lora_cases),
+                    q,
+                    sizes,
+                )
+
         self.keys_initialized = True
 
     def dispatch(
@@ -240,6 +315,7 @@ class CudagraphDispatcher:
         num_active_loras: int = 0,
         valid_modes: AbstractSet[CUDAGraphMode] | None = None,
         invalid_modes: AbstractSet[CUDAGraphMode] | None = None,
+        uniform_query_len: int | None = None,
     ) -> tuple[CUDAGraphMode, BatchDescriptor]:
         """
         Given conditions(e.g.,batch descriptor and if using piecewise only),
@@ -301,7 +377,11 @@ class CudagraphDispatcher:
 
         normalized_uniform = uniform_decode and self.cudagraph_mode.separate_routine()
         batch_desc = self._create_padded_batch_descriptor(
-            num_tokens, normalized_uniform, has_lora, effective_num_active_loras
+            num_tokens,
+            normalized_uniform,
+            has_lora,
+            effective_num_active_loras,
+            uniform_query_len=uniform_query_len,
         )
 
         if CUDAGraphMode.FULL in allowed_modes:

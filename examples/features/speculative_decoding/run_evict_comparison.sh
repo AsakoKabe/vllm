@@ -33,6 +33,9 @@ MAX_MODEL_LEN="${MAX_MODEL_LEN:-8192}"
 GPU_MEM_UTIL="${GPU_MEM_UTIL:-0.9}"
 EVICT_MIN_K="${EVICT_MIN_K:-1}"
 EVICT_BATCH_REDUCE="${EVICT_BATCH_REDUCE:-max}"
+# Quantize m* to this set and capture FULL CUDA graphs for those verify
+# lengths (e.g. "1,4,8"). Empty = off (truncated verifies stay PIECEWISE).
+EVICT_ALLOWED_KSTAR="${EVICT_ALLOWED_KSTAR:-}"
 # EVICT is a no-op at temperature 0 (greedy). Set TEMPERATURE>0 (e.g. 0.7) and
 # MAX_NUM_SEQS=1 (paper B=1 regime) so EVICT actually truncates.
 TEMPERATURE="${TEMPERATURE:-0.0}"
@@ -118,6 +121,7 @@ COMPARE_ARGS=(
   --save-json "${RESULTS_JSON}"
 )
 [[ -n "${MAX_NUM_SEQS}" ]] && COMPARE_ARGS+=(--max-num-seqs "${MAX_NUM_SEQS}")
+[[ -n "${EVICT_ALLOWED_KSTAR}" ]] && COMPARE_ARGS+=(--evict-allowed-kstar "${EVICT_ALLOWED_KSTAR}")
 [[ -n "${CACHE_JSON}" ]] && COMPARE_ARGS+=(--cache "${CACHE_JSON}")
 [[ "${ENABLE_ROUTED_EXPERTS}" == "1" ]] && COMPARE_ARGS+=(--enable-return-routed-experts)
 [[ "${WITH_AR_BASELINE}" != "1" ]] && COMPARE_ARGS+=(--skip-ar)
