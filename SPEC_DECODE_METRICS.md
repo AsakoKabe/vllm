@@ -34,19 +34,11 @@ $$\mathbb{E}[A] = \frac{1}{R}\sum_{r=1}^{R} A_r = \frac{S}{R}, \qquad \eta_B(K) 
 
 $$\text{SpeedUp} = \frac{\mathbb{E}[A]}{K\dfrac{T_D}{T_T(0)} + \dfrac{1}{\eta(K)} + \dfrac{T_{\text{reject}}}{T_T(0)}} \approx \frac{\mathbb{E}[A]}{K\dfrac{T_D}{T_T(0)} + \dfrac{1}{\eta(K)}}$$
 
-**MoE-роутинг (сигнал $\bar U_r$).**
+**MoE-роутинг (сигнал $\bar U_r$).** Измеряется напрямую; связь $T_T$ с $\bar U_r$ показывается по измеренным парам $(\bar U_r, T_T(k))$ — без фита $\alpha,\beta$.
 
 $$\mathcal{E}_{\ell,b,t} = \mathrm{TopK}\big(G_\ell(x_{\ell,b,t}),\, k_e\big), \qquad \mathcal{U}_{\ell,r} = \bigcup_{(b,t)\in\mathcal{I}_r} \mathcal{E}_{\ell,b,t}, \qquad \bar{U}_r = \frac{1}{|\mathcal{L}_{\mathrm{MoE}}|}\sum_{\ell\in\mathcal{L}_{\mathrm{MoE}}} |\mathcal{U}_{\ell,r}|$$
 
-$$T_{T,r} \approx \alpha\,\bar{U}_r + \beta$$
-
-**Декомпозиция $T_{SD}$ (Tier 3).**
-
-$$T_{SD}(\pi) = \sum_{i=1}^{|\pi|} C_i, \qquad C_i = (|a_i| + |r_i|)\,T_D(1) + T_T([a_i, r_i])$$
-
-$$OPT(i) = \min_{k\le K_i}\big[\,C(i,k) + OPT(i{+}k{+}1)\,\big], \qquad C(i,k) = k\,T_D(1) + T_T(k,\mathcal{E}_{i:i+k})$$
-
-$$T_{SD} = T_{id}^{*} + \underbrace{(T_{id} - T_{id}^{*})}_{\Delta_{\text{partition}}} + \underbrace{(T_{SD} - T_{id})}_{\Delta_{\text{rejection}}}$$
+> **Вне scope — только прямо измеряемое из кода.** Величины, требующие offline-фита, эмулятора или допущений, исключены: $\alpha_k,\beta_k$-фит ($T_{T,r}\approx\alpha\bar U_r+\beta$); вся декомпозиция $T_{SD}=T^*_{id}+\Delta_{\text{partition}}+\Delta_{\text{rejection}}$ (ideal-draft $T_{id}$, Bellman-DP $T^*_{id}$); per-round trace sink + offline-харнесс. Вместе с ними неактуальны открытые вопросы A1–A4/C9/C11. Оставлены только прямо измеряемые метрики и тривиальная арифметика над ними (в т.ч. аналитический SpeedUp из измеренных $T_T(0),T_D,T_{\text{reject}},E[A]$).
 
 ## 3. Acceptance-метрики (пред-существующие)
 | Метрика | Описание | Нотация |
@@ -77,11 +69,9 @@ scheduler.py:1501 read ; :1819 observe_timing (1x/шаг)
 - **µs-int**: `Vector.values: list[int]` → тайминг в целых µs.
 - **V1-only**: инструментировано в V1 model runner; флаг форсит V1.
 
-## 6. Планируется (ещё НЕ реализовано)
-| Величина | Описание | Статус |
-|---|---|---|
-| $T_T(0)$ baseline, $\eta(K)$ | Из бинов `target_forward_*_by_positions` (bin[1]/bin[K+1]). | ✅ Реализовано |
-| $\alpha_k,\beta_k$ cost-model | Фит $T_{T,r}\approx\alpha\,\bar U_r+\beta$ по бинам $k$. | Tier 3 (оффлайн) |
-| $T_{SD}=T_{id}^{*}+\Delta_{\text{part}}+\Delta_{\text{rej}}$ | Bellman-DP + ideal-rerun. | Tier 3 (ждёт A1–A4) |
+## 6. Статус
+Все метрики этого справочника **реализованы и прямо измеряются из кода**: стадии ($T_T$, $T_{\text{reject}}$, $T_D$, per-pos), `num_timed_steps`, $\bar U_r$, бины $T_T(0)/T_T(K)\to\eta(K),R_{DT}$, acceptance $\to E[A]$, SpeedUp (эмпирический + аналитический). Опционально к добавлению — экспорт EVICT $m^*$/saved-positions (тоже прямо измеряемо).
+
+**Исключено из scope** (нельзя посчитать напрямую из кода): $\alpha_k,\beta_k$-фит и вся декомпозиция $T_{SD}$ (Tier 3), вместе с открытыми вопросами A1–A4/C9/C11.
 
 См. также `SPEC_DECODE_TIMING_PLAN.md`, `SPEC_DECODE_OPEN_QUESTIONS.md`.
