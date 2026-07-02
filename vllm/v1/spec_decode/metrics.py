@@ -13,6 +13,7 @@ from vllm.logger import init_logger
 from vllm.v1.metrics.utils import create_metric_per_engine
 
 if TYPE_CHECKING:
+    from vllm.v1.spec_decode.evict.stats import EvictStats
     from vllm.v1.spec_decode.timing import SpecDecodeTimingStats
 
 logger = init_logger(__name__)
@@ -50,6 +51,14 @@ class SpecDecodingStats:
     # so T_T(0)=bin[1] and T_T(K)=bin[K+1] fall out of one run.
     num_verified_positions: int = 0
 
+    # EVICT truncation for this step. Set only when EVICT trimmed the chain;
+    # populated once per step via observe_evict().
+    has_evict: bool = False
+    evict_kstar: int = 0
+    evict_num_spec: int = 0
+    evict_num_reqs: int = 0
+    evict_saved_positions: int = 0
+
     @classmethod
     def new(cls, num_spec_tokens: int) -> "SpecDecodingStats":
         return cls(
@@ -79,6 +88,14 @@ class SpecDecodingStats:
         self.avg_distinct_experts = timing.avg_distinct_experts
         self.num_verified_positions = timing.num_verified_positions
 
+    def observe_evict(self, evict: "EvictStats") -> None:
+        """Fold one step's EVICT truncation decision (called once/step)."""
+        self.has_evict = True
+        self.evict_kstar = evict.kstar
+        self.evict_num_spec = evict.num_spec
+        self.evict_num_reqs = evict.num_reqs
+        self.evict_saved_positions = evict.saved_positions
+
 
 class SpecDecodingLogging:
     """Aggregate and log spec decoding metrics.
@@ -107,6 +124,9 @@ class SpecDecodingLogging:
         self.draft_forward_ms_per_pos_lists: list[list[float]] = []
         self.avg_distinct_experts: list[float] = []
         self.num_verified_positions: list[int] = []
+        self.evict_kstar: list[int] = []
+        self.evict_num_spec: list[int] = []
+        self.evict_saved_positions: list[int] = []
         self.last_log_time = time.monotonic()
 
     def observe(self, spec_decoding_stats: SpecDecodingStats):
@@ -128,11 +148,16 @@ class SpecDecodingLogging:
             self.num_verified_positions.append(
                 spec_decoding_stats.num_verified_positions
             )
+        if spec_decoding_stats.has_evict:
+            self.evict_kstar.append(spec_decoding_stats.evict_kstar)
+            self.evict_num_spec.append(spec_decoding_stats.evict_num_spec)
+            self.evict_saved_positions.append(spec_decoding_stats.evict_saved_positions)
 
     def log(self, log_fn=logger.info):
         if not self.num_drafts:
             return
         self._log_timing(log_fn)
+        self._log_evict(log_fn)
         num_drafts = np.sum(self.num_drafts)
         num_draft_tokens = np.sum(self.num_draft_tokens)
         num_accepted_tokens = np.sum(self.num_accepted_tokens)
@@ -246,6 +271,35 @@ class SpecDecodingLogging:
             t_tk,
             k_max - 1,
             eta,
+        )
+
+    def _log_evict(self, log_fn):
+        """Log EVICT truncation: mean m*, saved verify positions, saved %."""
+        if not self.evict_kstar:
+            return
+        steps = len(self.evict_kstar)
+        mean_kstar = float(np.mean(self.evict_kstar))
+        mean_k = float(np.mean(self.evict_num_spec))
+        saved = int(np.sum(self.evict_saved_positions))
+        # Per-step truncated fraction (K - m*)/K is batch-size independent;
+        # average it over the truncation steps.
+        saved_frac = float(
+            np.mean(
+                [
+                    (k - ks) / k
+                    for k, ks in zip(self.evict_num_spec, self.evict_kstar)
+                    if k > 0
+                ]
+            )
+        )
+        log_fn(
+            "SpecDecoding EVICT (%d truncation steps): mean m*: %.2f, mean K: %.2f, "
+            "saved verify positions: %d (mean %.1f%% of chain truncated)",
+            steps,
+            mean_kstar,
+            mean_k,
+            saved,
+            saved_frac * 100.0,
         )
 
     @staticmethod
@@ -403,6 +457,67 @@ class SpecDecodingProm:
         self.counter_spec_decode_target_forward_count_by_positions: dict[
             int, list[prometheus_client.Counter]
         ] = {}
+
+        # EVICT truncation metrics — independent of --spec-decode-timing; on
+        # whenever EVICT is enabled. mean m* = evict_kstar_sum / evict_steps.
+        self.enable_evict = bool(
+            speculative_config is not None
+            and getattr(speculative_config, "evict_enabled", False)
+        )
+        self.counter_spec_decode_evict: dict[str, list[prometheus_client.Counter]] = {}
+        self.counter_spec_decode_evict_kstar_hist: dict[
+            int, list[prometheus_client.Counter]
+        ] = {}
+        if self.enable_evict:
+            evict_specs = [
+                (
+                    "vllm:spec_decode_evict_steps",
+                    "Steps where EVICT evaluated/truncated the drafted chain.",
+                ),
+                (
+                    "vllm:spec_decode_evict_kstar_sum",
+                    "Sum of the chosen verified prefix m* over EVICT steps; "
+                    "mean m* = value / evict_steps.",
+                ),
+                (
+                    "vllm:spec_decode_evict_saved_positions",
+                    "Verify positions skipped by EVICT: sum of (K - m*) * B.",
+                ),
+            ]
+            evict_counters = [
+                create_metric_per_engine(
+                    self._counter_cls(
+                        name=name, documentation=doc, labelnames=labelnames
+                    ),
+                    per_engine_labelvalues,
+                )
+                for name, doc in evict_specs
+            ]
+            self.counter_spec_decode_evict = {
+                "steps": evict_counters[0],
+                "kstar_sum": evict_counters[1],
+                "saved_positions": evict_counters[2],
+            }
+            evict_num_spec = (
+                speculative_config.num_speculative_tokens
+                if speculative_config is not None
+                else 0
+            )
+            if evict_num_spec > 0:
+                pos_labelnames = labelnames + ["position"]
+                base_kstar_hist = self._counter_cls(
+                    name="vllm:spec_decode_evict_kstar_hist",
+                    documentation="Count of EVICT steps by chosen m* (index == m*).",
+                    labelnames=pos_labelnames,
+                )
+                self.counter_spec_decode_evict_kstar_hist = {
+                    idx: [
+                        base_kstar_hist.labels(*lv, str(m))
+                        for m in range(evict_num_spec + 1)
+                    ]
+                    for idx, lv in per_engine_labelvalues.items()
+                }
+
         if not enable_timing:
             return
         timing_specs = [
@@ -485,15 +600,12 @@ class SpecDecodingProm:
                 labelnames=pos_labelnames,
             )
             self.counter_spec_decode_target_forward_us_by_positions = {
-                idx: [
-                    base_tf_us.labels(*lv, str(k)) for k in range(num_position_bins)
-                ]
+                idx: [base_tf_us.labels(*lv, str(k)) for k in range(num_position_bins)]
                 for idx, lv in per_engine_labelvalues.items()
             }
             self.counter_spec_decode_target_forward_count_by_positions = {
                 idx: [
-                    base_tf_count.labels(*lv, str(k))
-                    for k in range(num_position_bins)
+                    base_tf_count.labels(*lv, str(k)) for k in range(num_position_bins)
                 ]
                 for idx, lv in per_engine_labelvalues.items()
             }
@@ -514,6 +626,19 @@ class SpecDecodingProm:
             self.counter_spec_decode_num_accepted_tokens_per_pos.get(engine_idx, [])
         ):
             counter.inc(spec_decoding_stats.num_accepted_tokens_per_pos[pos])
+
+        # EVICT truncation (independent of timing; only when EVICT truncated).
+        if self.enable_evict and spec_decoding_stats.has_evict:
+            evict = self.counter_spec_decode_evict
+            evict["steps"][engine_idx].inc(1)
+            evict["kstar_sum"][engine_idx].inc(spec_decoding_stats.evict_kstar)
+            evict["saved_positions"][engine_idx].inc(
+                spec_decoding_stats.evict_saved_positions
+            )
+            hist = self.counter_spec_decode_evict_kstar_hist.get(engine_idx, [])
+            m = spec_decoding_stats.evict_kstar
+            if 0 <= m < len(hist):
+                hist[m].inc(1)
 
         if not (self.enable_timing and spec_decoding_stats.has_timing):
             return

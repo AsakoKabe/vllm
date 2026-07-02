@@ -11,6 +11,7 @@ import torch
 
 from vllm.compilation.cuda_graph import CUDAGraphStat
 from vllm.v1.core.sched.output import SchedulerOutput
+from vllm.v1.spec_decode.evict.stats import EvictStats
 from vllm.v1.spec_decode.timing import SpecDecodeTimingStats
 
 if TYPE_CHECKING:
@@ -272,6 +273,9 @@ class ModelRunnerOutput:
 
     # Per-stage speculative-decode timing for this step (one-step lagged).
     spec_decode_timing: SpecDecodeTimingStats | None = None
+
+    # EVICT truncation decision for this step (None unless EVICT truncated).
+    evict_stats: EvictStats | None = None
 
     # Per-step routed experts data captured by the worker.
     # ``routing_data`` shape: (num_scheduled_tokens, num_layers,

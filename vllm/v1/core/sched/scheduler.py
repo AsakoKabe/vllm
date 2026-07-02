@@ -1499,6 +1499,7 @@ class Scheduler(SchedulerInterface):
         kv_connector_output = model_runner_output.kv_connector_output
         cudagraph_stats = model_runner_output.cudagraph_stats
         spec_decode_timing = model_runner_output.spec_decode_timing
+        evict_stats = model_runner_output.evict_stats
 
         # Every GPU write enqueued by this and earlier steps has completed, so it is
         # safe to return deferred-free blocks to the pool.
@@ -1817,6 +1818,8 @@ class Scheduler(SchedulerInterface):
         # spec-decoding stats once per step.
         if spec_decode_timing is not None and spec_decoding_stats is not None:
             spec_decoding_stats.observe_timing(spec_decode_timing)
+        if evict_stats is not None and spec_decoding_stats is not None:
+            spec_decoding_stats.observe_evict(evict_stats)
 
         if (
             stats := self.make_stats(

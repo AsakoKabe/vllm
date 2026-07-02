@@ -8,6 +8,7 @@ CUDA-event timing itself requires a GPU and is exercised in integration tests.
 
 import numpy as np
 
+from vllm.v1.spec_decode.evict.stats import EvictStats
 from vllm.v1.spec_decode.metrics import (
     SpecDecodingLogging,
     SpecDecodingStats,
@@ -138,6 +139,49 @@ def test_logging_target_by_positions_excludes_prefill():
     logging.log(log_fn=_collect(messages))
     # No verified-position pairs -> the by-positions line is suppressed.
     assert not any("T_T by positions" in m for m in messages)
+
+
+def test_observe_evict_sets_fields():
+    stats = SpecDecodingStats.new(num_spec_tokens=4)
+    assert not stats.has_evict
+    stats.observe_evict(EvictStats(kstar=2, num_spec=4, num_reqs=3, saved_positions=6))
+    assert stats.has_evict
+    assert stats.evict_kstar == 2
+    assert stats.evict_num_spec == 4
+    assert stats.evict_num_reqs == 3
+    assert stats.evict_saved_positions == 6
+
+
+def test_logging_aggregates_evict():
+    logging = SpecDecodingLogging()
+    for _ in range(3):
+        stats = SpecDecodingStats.new(num_spec_tokens=4)
+        stats.observe_draft(num_draft_tokens=4, num_accepted_tokens=2)
+        # m*=2 of K=4 with B=1 -> saved 2 positions/step; (4-2)/4 = 50% truncated.
+        stats.observe_evict(
+            EvictStats(kstar=2, num_spec=4, num_reqs=1, saved_positions=2)
+        )
+        logging.observe(stats)
+    assert len(logging.evict_kstar) == 3
+
+    messages: list[str] = []
+    logging.log(log_fn=_collect(messages))
+    line = next(m for m in messages if "EVICT" in m)
+    assert "mean m*: 2.00" in line
+    assert "saved verify positions: 6" in line  # 3 steps * 2
+    assert "50.0% of chain truncated" in line
+    # log() resets accumulators.
+    assert logging.evict_kstar == []
+
+
+def test_logging_without_evict_skips_evict_line():
+    logging = SpecDecodingLogging()
+    stats = SpecDecodingStats.new(num_spec_tokens=4)
+    stats.observe_draft(num_draft_tokens=4, num_accepted_tokens=2)
+    logging.observe(stats)
+    messages: list[str] = []
+    logging.log(log_fn=_collect(messages))
+    assert not any("EVICT" in m for m in messages)
 
 
 def test_mean_per_pos_handles_variable_k():

@@ -67,6 +67,10 @@ DISTINCT_EXPERTS_METRIC = "vllm:spec_decode_distinct_experts_milli"
 NUM_DRAFTS_METRIC = "vllm:spec_decode_num_drafts"
 NUM_DRAFT_TOKENS_METRIC = "vllm:spec_decode_num_draft_tokens"
 NUM_ACCEPTED_TOKENS_METRIC = "vllm:spec_decode_num_accepted_tokens"
+EVICT_STEPS_METRIC = "vllm:spec_decode_evict_steps"
+EVICT_KSTAR_SUM_METRIC = "vllm:spec_decode_evict_kstar_sum"
+EVICT_SAVED_METRIC = "vllm:spec_decode_evict_saved_positions"
+EVICT_HIST_METRIC = "vllm:spec_decode_evict_kstar_hist"
 
 _SCALAR_NAMES = frozenset(
     set(STAGE_METRICS.values())
@@ -76,10 +80,18 @@ _SCALAR_NAMES = frozenset(
         NUM_DRAFTS_METRIC,
         NUM_DRAFT_TOKENS_METRIC,
         NUM_ACCEPTED_TOKENS_METRIC,
+        EVICT_STEPS_METRIC,
+        EVICT_KSTAR_SUM_METRIC,
+        EVICT_SAVED_METRIC,
     }
 )
 _VECTOR_NAMES = frozenset(
-    {PER_POS_METRIC, TF_US_BY_POS_METRIC, TF_COUNT_BY_POS_METRIC}
+    {
+        PER_POS_METRIC,
+        TF_US_BY_POS_METRIC,
+        TF_COUNT_BY_POS_METRIC,
+        EVICT_HIST_METRIC,
+    }
 )
 
 
@@ -223,9 +235,7 @@ def derive(after: dict, before: dict, num_spec_tokens: int) -> dict:
         else float("nan")
     )
     # Dominant verification length (most frequent bin) and its T_T.
-    dom_k = (
-        max(range(1, len(cnt_by)), key=lambda k: cnt_by[k]) if total_cnt else 0
-    )
+    dom_k = max(range(1, len(cnt_by)), key=lambda k: cnt_by[k]) if total_cnt else 0
     out["dominant_positions"] = dom_k
     out["t_t0_ms"] = t_t(1)  # single-position forward == T_T(0), paper index
     out["t_t_dom_ms"] = t_t(dom_k) if dom_k else None
@@ -242,6 +252,19 @@ def derive(after: dict, before: dict, num_spec_tokens: int) -> dict:
         out["analytical_speedup"] = out["accepted_length"] * t_t0 / denom
     else:
         out["analytical_speedup"] = None
+
+    # EVICT truncation effect (populated only for the EVICT config).
+    evict_steps = _diff_scalar(after, before, EVICT_STEPS_METRIC)
+    if evict_steps > 0:
+        out["evict_steps"] = int(evict_steps)
+        out["evict_mean_kstar"] = (
+            _diff_scalar(after, before, EVICT_KSTAR_SUM_METRIC) / evict_steps
+        )
+        out["evict_saved_positions"] = int(
+            _diff_scalar(after, before, EVICT_SAVED_METRIC)
+        )
+        hist = _diff_vector(after, before, EVICT_HIST_METRIC)
+        out["evict_kstar_hist"] = hist
     return out
 
 
@@ -344,19 +367,25 @@ def print_report(results: list[dict], num_spec_tokens: int) -> None:
         ("T_T(K) (ms)", "t_t_full_ms", "8.3f"),
         ("analytical speedup", "analytical_speedup", "8.3f"),
         ("num_timed_steps", "num_timed_steps", "8d"),
+        ("EVICT mean m*", "evict_mean_kstar", "8.3f"),
+        ("EVICT saved positions", "evict_saved_positions", "8d"),
+        ("EVICT steps", "evict_steps", "8d"),
     ]
     spec_results = [r for r in (base, evict) if r]
     if spec_results:
         print("\n" + "=" * 68)
         print("DECOMPOSITION METRICS (per timed spec step)")
         print("=" * 68)
-        header = f"  {'metric':<26}" + "".join(
-            f"{r['name']:>14}" for r in spec_results
-        )
+        header = f"  {'metric':<26}" + "".join(f"{r['name']:>14}" for r in spec_results)
         print(header)
         for label, key, spec in rows:
             cells = "".join(_fmt(r.get(key), f"14{spec[1:]}") for r in spec_results)
             print(f"  {label:<26}{cells}")
+
+    if evict and evict.get("evict_kstar_hist"):
+        hist = evict["evict_kstar_hist"]
+        dist = ", ".join(f"m*={m}:{c}" for m, c in enumerate(hist) if c > 0)
+        print(f"\n  EVICT m* distribution [spec_evict]: {dist}")
 
     if base and evict:
         print("\n" + "-" * 68)

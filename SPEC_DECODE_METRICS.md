@@ -50,6 +50,18 @@ $$\mathcal{E}_{\ell,b,t} = \mathrm{TopK}\big(G_\ell(x_{\ell,b,t}),\, k_e\big), \
 
 Accepted length $\mathbb{E}[A]=1+\frac{\text{accepted}}{\text{drafts}}$ (с bonus); acceptance rate $=\frac{\text{accepted}}{\text{draft\_tokens}}$.
 
+## 3a. EVICT-метрики (усечение верификации)
+Экспортируются, когда включён `evict_enabled` — **независимо от `--spec-decode-timing`** (свой транспорт `ModelRunnerOutput.evict_stats` → `observe_evict`). Считаются прямо: на шаге EVICT выбирает $m^*$ из $K$ и пропускает $(K-m^*)\cdot B$ позиций верификации.
+
+| Метрика `vllm:spec_decode_…` | Описание | Формула |
+|---|---|---|
+| `…evict_steps` | Число шагов, где EVICT оценил/усёк цепочку — знаменатель. | $R_{\text{evict}}$ |
+| `…evict_kstar_sum` | Сумма выбранного $m^*$ по шагам; mean $m^*$ = value/`evict_steps`. | $\sum m^*$ |
+| `…evict_saved_positions` | Пропущено позиций верификации: $\sum (K-m^*)\cdot B$. | $\sum (K-m^*)B$ |
+| `…evict_kstar_hist` | Распределение $m^*$ (`Vector`, индекс = $m^*$, значение = число шагов). | гистограмма |
+
+Средняя доля усечения $=\text{mean}_i[(K_i-m^*_i)/K_i]$. Лог-строка `SpecDecoding EVICT …` печатает mean $m^*$, mean $K$, saved positions, % усечения. Реализация: `gpu_model_runner._apply_evict_truncation` → `metrics.py` (`observe_evict`/Prom/Logging), носитель `vllm/v1/spec_decode/evict/stats.py`. Скрипт `evict_vs_baseline.py` печатает их в блоке DECOMPOSITION + распределение $m^*$.
+
 ## 4. Поток данных
 ```
 SpecDecodeTimer.time_stage(...)  — CUDA events
@@ -70,7 +82,7 @@ scheduler.py:1501 read ; :1819 observe_timing (1x/шаг)
 - **V1-only**: инструментировано в V1 model runner; флаг форсит V1.
 
 ## 6. Статус
-Все метрики этого справочника **реализованы и прямо измеряются из кода**: стадии ($T_T$, $T_{\text{reject}}$, $T_D$, per-pos), `num_timed_steps`, $\bar U_r$, бины $T_T(0)/T_T(K)\to\eta(K),R_{DT}$, acceptance $\to E[A]$, SpeedUp (эмпирический + аналитический). Опционально к добавлению — экспорт EVICT $m^*$/saved-positions (тоже прямо измеряемо).
+Все метрики этого справочника **реализованы и прямо измеряются из кода**: стадии ($T_T$, $T_{\text{reject}}$, $T_D$, per-pos), `num_timed_steps`, $\bar U_r$, бины $T_T(0)/T_T(K)\to\eta(K),R_{DT}$, acceptance $\to E[A]$, SpeedUp (эмпирический + аналитический), **EVICT $m^*$/saved-positions** (раздел 3a).
 
 **Исключено из scope** (нельзя посчитать напрямую из кода): $\alpha_k,\beta_k$-фит и вся декомпозиция $T_{SD}$ (Tier 3), вместе с открытыми вопросами A1–A4/C9/C11.
 

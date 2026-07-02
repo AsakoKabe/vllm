@@ -185,6 +185,7 @@ from vllm.v1.spec_decode.evict.selector import (
     reduce_batch_kstar,
     select_kstar,
 )
+from vllm.v1.spec_decode.evict.stats import EvictStats
 from vllm.v1.spec_decode.extract_hidden_states import ExtractHiddenStatesProposer
 from vllm.v1.spec_decode.gemma4 import Gemma4Proposer
 from vllm.v1.spec_decode.medusa import MedusaProposer
@@ -670,9 +671,9 @@ class GPUModelRunner(
         # maximizes E[A(m)] / C(m). See vllm/v1/spec_decode/evict.
         self._evict_cost_table = None
         self._evict_cost_per_m: torch.Tensor | None = None
-        self._evict_steps = 0
-        self._evict_saved_positions = 0
-        self._evict_kstar_sum = 0
+        # This step's EVICT truncation decision, exported through the metrics
+        # path. None on steps where EVICT did not truncate.
+        self._evict_stats: EvictStats | None = None
         evict_enabled = bool(
             self.speculative_config is not None
             and getattr(self.speculative_config, "evict_enabled", False)
@@ -4383,6 +4384,7 @@ class GPUModelRunner(
         # (wait_for_save + clear metadata) until after draft model runs.
         defer_kv_connector_finalize = self.speculative_config is not None
         self.spec_decode_timer.begin_step()
+        self._evict_stats = None
         if spec_decode_metadata is not None:
             self.spec_decode_timer.set_num_verified_positions(
                 sum(spec_decode_metadata.num_draft_tokens)
@@ -4731,6 +4733,7 @@ class GPUModelRunner(
                 num_nans_in_logits=num_nans_in_logits,
                 cudagraph_stats=cudagraph_stats,
                 spec_decode_timing=self._spec_decode_timing,
+                evict_stats=self._evict_stats,
                 routed_experts=None,
             )
 
@@ -4958,18 +4961,15 @@ class GPUModelRunner(
         # CUDA-graph version).
         m = reduce_batch_kstar(kstar, self.speculative_config.evict_batch_reduce)
 
-        self._evict_steps += 1
-        self._evict_kstar_sum += m
-        self._evict_saved_positions += (num_spec - m) * num_reqs
-        if self._evict_steps % 256 == 0:
-            logger.info(
-                "EVICT: mean m*=%.2f over %d steps (K=%d), saved %d verify "
-                "positions",
-                self._evict_kstar_sum / self._evict_steps,
-                self._evict_steps,
-                num_spec,
-                self._evict_saved_positions,
-            )
+        # Record this step's decision for export through the metrics path
+        # (SpecDecodingProm / get_metrics()); replaces the old runner-local
+        # counters and periodic logger.info.
+        self._evict_stats = EvictStats(
+            kstar=m,
+            num_spec=num_spec,
+            num_reqs=num_reqs,
+            saved_positions=(num_spec - m) * num_reqs,
+        )
 
         if m < num_spec:
             self._draft_token_ids = draft[:, :m].contiguous()
