@@ -54,6 +54,10 @@ COST_TABLE="${COST_TABLE:-${REPO_ROOT}/evict_cost_table.json}"
 # different method/K do not clobber each other (same config overwrites).
 _MODEL_TAG="$(basename "${MODEL}")"
 RESULTS_JSON="${RESULTS_JSON:-${REPO_ROOT}/evict_results_${_MODEL_TAG}_${METHOD}_K${K}.json}"
+# Prediction cache: vanilla_ar + spec_baseline are reused across runs (they do
+# not depend on EVICT), so re-running only re-executes spec_evict. Set
+# CACHE_JSON= (empty) to disable.
+CACHE_JSON="${CACHE_JSON-${REPO_ROOT}/evict_cache_${_MODEL_TAG}_${METHOD}_K${K}.json}"
 
 if [[ ! -x "${PYTHON}" ]]; then
   echo "ERROR: Python interpreter not found at ${PYTHON}." >&2
@@ -114,6 +118,7 @@ COMPARE_ARGS=(
   --save-json "${RESULTS_JSON}"
 )
 [[ -n "${MAX_NUM_SEQS}" ]] && COMPARE_ARGS+=(--max-num-seqs "${MAX_NUM_SEQS}")
+[[ -n "${CACHE_JSON}" ]] && COMPARE_ARGS+=(--cache "${CACHE_JSON}")
 [[ "${ENABLE_ROUTED_EXPERTS}" == "1" ]] && COMPARE_ARGS+=(--enable-return-routed-experts)
 [[ "${WITH_AR_BASELINE}" != "1" ]] && COMPARE_ARGS+=(--skip-ar)
 
