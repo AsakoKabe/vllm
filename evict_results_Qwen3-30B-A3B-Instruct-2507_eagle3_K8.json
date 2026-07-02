@@ -1,0 +1,102 @@
+{
+  "timestamp": "2026-07-02T18:04:04",
+  "config": {
+    "model": "Qwen/Qwen3-30B-A3B-Instruct-2507",
+    "method": "eagle3",
+    "eagle_dir": "RedHatAI/Qwen3-30B-A3B-Instruct-2507-speculator.eagle3",
+    "num_spec_tokens": 8,
+    "num_prompts": 16,
+    "output_len": 256,
+    "tp": 1,
+    "max_model_len": 8192,
+    "gpu_memory_utilization": 0.9,
+    "enforce_eager": false,
+    "enable_return_routed_experts": true,
+    "evict_cost_table": "/home/damamatin/vllm/evict_cost_table.json",
+    "evict_cost_intercept": 1.0,
+    "evict_cost_per_token": 0.5,
+    "evict_min_k": 1,
+    "evict_batch_reduce": "max",
+    "skip_ar": false,
+    "print_output": false,
+    "save_json": "/home/damamatin/vllm/evict_results_Qwen3-30B-A3B-Instruct-2507_eagle3_K8.json",
+    "no_save": false
+  },
+  "configs": {
+    "vanilla_ar": {
+      "name": "vanilla_ar",
+      "wall_s": 5.184974577277899,
+      "out_tokens": 3478,
+      "throughput": 670.7843882671345,
+      "text_sha256": "5cc5b5224ea3d4d54a40cf65c5b8585f31cb685a897aaef2b13464fa125ed788"
+    },
+    "spec_baseline": {
+      "name": "spec_baseline",
+      "wall_s": 5.747013583779335,
+      "out_tokens": 3580,
+      "throughput": 622.9322321604346,
+      "num_timed_steps": 168,
+      "target_forward_ms": 25.468904761904763,
+      "verify_ms": 0.27907738095238094,
+      "sample_ms": 0.0001488095238095238,
+      "draft_total_ms": 3.4126785714285717,
+      "per_pos_draft_ms": [
+        0.20186309523809523,
+        0.16482738095238098,
+        0.16524404761904762,
+        0.16451785714285713,
+        0.16407738095238097,
+        0.1642202380952381,
+        0.16420833333333335,
+        0.1643452380952381
+      ],
+      "accepted_length": 2.1326591314693637,
+      "acceptance_rate": 0.14158239143367043,
+      "avg_distinct_experts": 65.85551190476191,
+      "mean_verified_positions": NaN,
+      "dominant_positions": 0,
+      "t_t0_ms": null,
+      "t_t_dom_ms": null,
+      "t_t_full_ms": null,
+      "analytical_speedup": null,
+      "text_sha256": "10853b00bf32e574d58ace0606513df630b613af5062d4f4d7aed81db3524e9c"
+    },
+    "spec_evict": {
+      "name": "spec_evict",
+      "wall_s": 5.737420046702027,
+      "out_tokens": 3580,
+      "throughput": 623.9738368219787,
+      "num_timed_steps": 168,
+      "target_forward_ms": 25.46072619047619,
+      "verify_ms": 0.27882738095238097,
+      "sample_ms": 0.00016071428571428573,
+      "draft_total_ms": 3.4076666666666666,
+      "per_pos_draft_ms": [
+        0.20180357142857142,
+        0.16467857142857142,
+        0.16519642857142858,
+        0.1645,
+        0.16436309523809525,
+        0.1643452380952381,
+        0.1642202380952381,
+        0.16428571428571428
+      ],
+      "accepted_length": 2.1326591314693637,
+      "acceptance_rate": 0.14158239143367043,
+      "avg_distinct_experts": 65.85551190476191,
+      "mean_verified_positions": NaN,
+      "dominant_positions": 0,
+      "t_t0_ms": null,
+      "t_t_dom_ms": null,
+      "t_t_full_ms": null,
+      "analytical_speedup": null,
+      "text_sha256": "10853b00bf32e574d58ace0606513df630b613af5062d4f4d7aed81db3524e9c"
+    }
+  },
+  "speedups": {
+    "spec_baseline_vs_ar": 0.9286623884757986,
+    "spec_evict_vs_ar": 0.9302152043727739,
+    "evict_vs_baseline": 1.0016720994801178
+  },
+  "lossless": true
+}
