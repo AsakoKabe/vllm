@@ -33,6 +33,11 @@ MAX_MODEL_LEN="${MAX_MODEL_LEN:-8192}"
 GPU_MEM_UTIL="${GPU_MEM_UTIL:-0.9}"
 EVICT_MIN_K="${EVICT_MIN_K:-1}"
 EVICT_BATCH_REDUCE="${EVICT_BATCH_REDUCE:-max}"
+# EVICT is a no-op at temperature 0 (greedy). Set TEMPERATURE>0 (e.g. 0.7) and
+# MAX_NUM_SEQS=1 (paper B=1 regime) so EVICT actually truncates.
+TEMPERATURE="${TEMPERATURE:-0.0}"
+SEED="${SEED:-0}"
+MAX_NUM_SEQS="${MAX_NUM_SEQS:-}"   # empty = vLLM default; set 1 for paper B=1
 # 1 = capture routed experts so U_r is populated (MoE targets); 0 = skip (dense).
 ENABLE_ROUTED_EXPERTS="${ENABLE_ROUTED_EXPERTS:-1}"
 # 1 = also run the vanilla-AR baseline for an absolute speedup denominator.
@@ -104,8 +109,11 @@ COMPARE_ARGS=(
   --evict-cost-table "${COST_TABLE}"
   --evict-min-k "${EVICT_MIN_K}"
   --evict-batch-reduce "${EVICT_BATCH_REDUCE}"
+  --temperature "${TEMPERATURE}"
+  --seed "${SEED}"
   --save-json "${RESULTS_JSON}"
 )
+[[ -n "${MAX_NUM_SEQS}" ]] && COMPARE_ARGS+=(--max-num-seqs "${MAX_NUM_SEQS}")
 [[ "${ENABLE_ROUTED_EXPERTS}" == "1" ]] && COMPARE_ARGS+=(--enable-return-routed-experts)
 [[ "${WITH_AR_BASELINE}" != "1" ]] && COMPARE_ARGS+=(--skip-ar)
 

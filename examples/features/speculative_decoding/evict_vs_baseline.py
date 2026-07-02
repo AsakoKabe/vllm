@@ -16,13 +16,22 @@ draft), the layer-averaged distinct-expert count U_r, and - when the
 single-position bin is populated - T_T(0), T_T(K), eta(K) and an analytical
 speedup from the paper's decomposition.
 
-EVICT is lossless under greedy sampling, so ``spec_baseline`` and ``spec_evict``
-must emit byte-identical text; the script asserts this.
+IMPORTANT: EVICT is a no-op at ``--temperature 0`` (greedy) — its truncation
+guard skips any step containing a greedy request, so ``spec_evict`` == baseline.
+To exercise EVICT, run with ``--temperature 0.7`` (and ``--max-num-seqs 1`` for
+the paper's B=1 regime, which also populates the T_T(0)/eta bins and makes the
+batch-uniform m* exact). At temperature 0 the script also checks the outputs are
+byte-identical (EVICT is lossless under greedy); at temperature > 0 that check
+is skipped (losslessness is distributional, not token-exact).
 
 Requires a GPU. Both spec configs use ``draft_sample_method='probabilistic'``
 (required by EVICT) so the only difference is ``evict_enabled``.
 
 Examples:
+    # Exercise EVICT (temperature > 0, B=1) — the truncation actually fires
+    python examples/features/speculative_decoding/evict_vs_baseline.py \
+        --method eagle3 --num-spec-tokens 4 --temperature 0.7 --max-num-seqs 1
+
     # EAGLE-3 on Llama-3.1-8B (dense; quick smoke test)
     python examples/features/speculative_decoding/evict_vs_baseline.py \
         --method eagle3 --num-spec-tokens 4 --num-prompts 16
@@ -111,6 +120,22 @@ def parse_args():
     parser.add_argument("--num-spec-tokens", type=int, default=4)
     parser.add_argument("--num-prompts", type=int, default=16)
     parser.add_argument("--output-len", type=int, default=256)
+    parser.add_argument(
+        "--temperature",
+        type=float,
+        default=0.0,
+        help="Sampling temperature. EVICT is inactive at 0.0 (greedy); use >0 "
+        "(e.g. 0.7) so EVICT actually truncates. The lossless text check only "
+        "applies at 0.0.",
+    )
+    parser.add_argument("--seed", type=int, default=0, help="Sampling seed.")
+    parser.add_argument(
+        "--max-num-seqs",
+        type=int,
+        default=None,
+        help="Cap concurrent sequences. Set 1 for the paper's B=1 regime so "
+        "T_T(0)/eta bins populate and batch-uniform m* is exact.",
+    )
     parser.add_argument("--tp", type=int, default=1)
     parser.add_argument("--max-model-len", type=int, default=8192)
     parser.add_argument("--gpu-memory-utilization", type=float, default=0.9)
@@ -293,6 +318,8 @@ def run_config(args, name: str, spec_config: dict | None, prompts, sp) -> dict:
         max_model_len=args.max_model_len,
         disable_log_stats=False,
     )
+    if args.max_num_seqs is not None:
+        llm_kwargs["max_num_seqs"] = args.max_num_seqs
     if spec_config is not None:
         llm_kwargs["speculative_config"] = spec_config
         llm_kwargs["spec_decode_timing"] = True
@@ -343,7 +370,9 @@ def _fmt(value, spec: str = "8.3f") -> str:
     return f"{value:{spec}}"
 
 
-def print_report(results: list[dict], num_spec_tokens: int) -> None:
+def print_report(
+    results: list[dict], num_spec_tokens: int, check_lossless: bool = True
+) -> None:
     by_name = {r["name"]: r for r in results}
     ar = by_name.get("vanilla_ar")
     base = by_name.get("spec_baseline")
@@ -403,12 +432,18 @@ def print_report(results: list[dict], num_spec_tokens: int) -> None:
 
     if base and evict:
         print("\n" + "-" * 68)
-        identical = base["texts"] == evict["texts"]
-        status = "PASS" if identical else "FAIL"
-        print(f"lossless check (baseline text == EVICT text): {status}")
-        if not identical:
-            mism = sum(1 for a, b in zip(base["texts"], evict["texts"]) if a != b)
-            print(f"  WARNING: {mism} prompt(s) differ - EVICT must be lossless!")
+        if not check_lossless:
+            print(
+                "lossless check: skipped (temperature > 0; EVICT losslessness is "
+                "distributional, not token-exact)"
+            )
+        else:
+            identical = base["texts"] == evict["texts"]
+            status = "PASS" if identical else "FAIL"
+            print(f"lossless check (baseline text == EVICT text): {status}")
+            if not identical:
+                mism = sum(1 for a, b in zip(base["texts"], evict["texts"]) if a != b)
+                print(f"  WARNING: {mism} prompt(s) differ - EVICT must be lossless!")
 
 
 def _jsonable(result: dict) -> dict:
@@ -434,7 +469,11 @@ def save_results(results: list[dict], args, path: str) -> None:
     if base and evict:
         speedups["evict_vs_baseline"] = evict["throughput"] / base["throughput"]
 
-    lossless = base["texts"] == evict["texts"] if base and evict else None
+    # Token-exact lossless check only makes sense at greedy (temperature 0).
+    if base and evict and args.temperature == 0.0:
+        lossless = base["texts"] == evict["texts"]
+    else:
+        lossless = None
     payload = {
         "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"),
         "config": vars(args),
@@ -449,7 +488,9 @@ def save_results(results: list[dict], args, path: str) -> None:
 
 def main(args) -> None:
     prompts = (PROMPTS * (args.num_prompts // len(PROMPTS) + 1))[: args.num_prompts]
-    sp = SamplingParams(temperature=0.0, max_tokens=args.output_len)
+    sp = SamplingParams(
+        temperature=args.temperature, seed=args.seed, max_tokens=args.output_len
+    )
 
     results = []
     if not args.skip_ar:
@@ -472,7 +513,9 @@ def main(args) -> None:
             sp,
         )
     )
-    print_report(results, args.num_spec_tokens)
+    print_report(
+        results, args.num_spec_tokens, check_lossless=(args.temperature == 0.0)
+    )
 
     if not args.no_save:
         path = args.save_json or f"evict_results_{time.strftime('%Y%m%d_%H%M%S')}.json"
