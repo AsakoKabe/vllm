@@ -26,7 +26,7 @@
 set -euo pipefail
 
 SKIP_INSTALL="${SKIP_INSTALL:-0}"   # 1 = skip venv/install, go straight to run
-DO_PULL="${DO_PULL:-0}"             # 1 = git pull --ff-only the current branch
+DO_PULL="${DO_PULL:-1}"             # 1 = git pull --ff-only the current branch first
 PYVER="${PYVER:-3.12}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -39,10 +39,12 @@ echo "   repo   : ${REPO_ROOT}"
 echo "   branch : $(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo '?')"
 echo "=============================================================="
 
-# ----- optional: sync the branch (fast-forward only, never clobbers) --------
+# ----- sync the branch (fast-forward only; tolerate a dirty tree) -----------
 if [[ "${DO_PULL}" == "1" ]]; then
   echo ">>> git pull --ff-only ..."
-  git pull --ff-only
+  git pull --ff-only || echo ">>> WARNING: could not fast-forward (local changes " \
+    "or diverged?); continuing with the CURRENT checkout. Resolve manually to " \
+    "pick up the latest code (e.g. git stash && git pull --ff-only)."
 fi
 
 # ----- pass a HF token through under the name the hub client expects --------
