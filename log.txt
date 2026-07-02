@@ -1,0 +1,484 @@
+Resolved 189 packages in 9.46s
+   Building vllm @ file:///home/damamatin/vllm
+  × Failed to build `vllm @ file:///home/damamatin/vllm`
+  ├─▶ The build backend returned an error
+  ╰─▶ Call to `setuptools.build_meta.build_editable` failed (exit status: 1)
+
+      [stdout]
+      running editable_wheel
+      creating /home/damamatin/.cache/uv/builds-v0/.tmpb2zxCD/.tmp-bmk21jbr/vllm.egg-info
+      writing /home/damamatin/.cache/uv/builds-v0/.tmpb2zxCD/.tmp-bmk21jbr/vllm.egg-info/PKG-INFO
+      writing dependency_links to /home/damamatin/.cache/uv/builds-v0/.tmpb2zxCD/.tmp-bmk21jbr/vllm.egg-info/dependency_links.txt
+      writing entry points to /home/damamatin/.cache/uv/builds-v0/.tmpb2zxCD/.tmp-bmk21jbr/vllm.egg-info/entry_points.txt
+      writing requirements to /home/damamatin/.cache/uv/builds-v0/.tmpb2zxCD/.tmp-bmk21jbr/vllm.egg-info/requires.txt
+      writing top-level names to /home/damamatin/.cache/uv/builds-v0/.tmpb2zxCD/.tmp-bmk21jbr/vllm.egg-info/top_level.txt
+      writing manifest file '/home/damamatin/.cache/uv/builds-v0/.tmpb2zxCD/.tmp-bmk21jbr/vllm.egg-info/SOURCES.txt'
+      reading manifest template 'MANIFEST.in'
+      adding license file 'LICENSE'
+      writing manifest file '/home/damamatin/.cache/uv/builds-v0/.tmpb2zxCD/.tmp-bmk21jbr/vllm.egg-info/SOURCES.txt'
+      creating '/home/damamatin/.cache/uv/builds-v0/.tmpb2zxCD/.tmp-bmk21jbr/vllm-0.23.1rc1.dev480+gd980a3cc6.cu121.dist-info'
+      creating /home/damamatin/.cache/uv/builds-v0/.tmpb2zxCD/.tmp-bmk21jbr/vllm-0.23.1rc1.dev480+gd980a3cc6.cu121.dist-info/WHEEL
+      running build_py
+      running build_ext
+      -- The CXX compiler identification is GNU 11.4.0
+      -- Detecting CXX compiler ABI info
+      -- Detecting CXX compiler ABI info - done
+      -- Check for working CXX compiler: /usr/bin/c++ - skipped
+      -- Detecting CXX compile features
+      -- Detecting CXX compile features - done
+      -- Build type: RelWithDebInfo
+      -- Target device: cuda
+      -- Found Python: /home/damamatin/.cache/uv/builds-v0/.tmpKKKWwS/bin/python (found version "3.12.11") found components: Interpreter Development.Module Development.SABIModule
+      -- Found python matching: /home/damamatin/.cache/uv/builds-v0/.tmpKKKWwS/bin/python.
+      -- Found CUDA: /usr/local/cuda (found version "12.1")
+      -- The CUDA compiler identification is NVIDIA 12.1.66 with host compiler GNU 11.4.0
+      -- Detecting CUDA compiler ABI info
+      -- Detecting CUDA compiler ABI info - done
+      -- Check for working CUDA compiler: /usr/local/cuda/bin/nvcc - skipped
+      -- Detecting CUDA compile features
+      -- Detecting CUDA compile features - done
+      -- Found CUDAToolkit: /usr/local/cuda/include (found version "12.1.66")
+      -- Performing Test CMAKE_HAVE_LIBC_PTHREAD
+      -- Performing Test CMAKE_HAVE_LIBC_PTHREAD - Success
+      -- Found Threads: TRUE
+      -- PyTorch: CUDA detected: 12.1
+      -- PyTorch: CUDA nvcc is: /usr/local/cuda/bin/nvcc
+      -- PyTorch: CUDA toolkit directory: /usr/local/cuda
+      -- PyTorch: Header version is: 12.1
+      -- Found Python: /home/damamatin/.cache/uv/builds-v0/.tmpKKKWwS/bin/python (found version "3.12.11") found components: Interpreter
+      -- /usr/local/cuda/lib64/libnvrtc.so shorthash is d540eb83
+      -- USE_CUDNN is set to 0. Compiling without cuDNN support
+      -- USE_CUSPARSELT is set to 0. Compiling without cuSPARSELt support
+      -- USE_CUDSS is set to 0. Compiling without cuDSS support
+      -- USE_CUFILE is set to 0. Compiling without cuFile support
+      -- Autodetected CUDA architecture(s):  8.0
+      -- Added CUDA NVCC flags for: -gencode;arch=compute_80,code=sm_80
+      -- Found Torch: /home/damamatin/.cache/uv/builds-v0/.tmpKKKWwS/lib/python3.12/site-packages/torch/lib/libtorch.so
+      -- CUDA target architectures: 8.0
+      -- CUDA supported target architectures: 8.0
+      -- FetchContent base directory: /home/damamatin/vllm/.deps
+      -- Enabling cumem allocator extension.
+      -- CMake Version: 4.3.4
+      -- CUTLASS 4.4.2
+      -- Found CUDAToolkit: /usr/local/cuda/targets/x86_64-linux/include (found version "12.1.66")
+      -- CUDART: /usr/local/cuda/lib64/libcudart.so
+      -- CUDA Driver: /usr/local/cuda/lib64/stubs/libcuda.so
+      -- NVRTC: /usr/local/cuda/lib64/libnvrtc.so
+      -- Default Install Location: install
+      -- Found Python3: /home/damamatin/.cache/uv/builds-v0/.tmpKKKWwS/bin/python3.12 (found suitable version "3.12.11", minimum required is "3.5") found components: Interpreter
+      -- CUDA Compilation Architectures: 70;72;75;80;86;87;89;90;90a
+      -- Enable caching of reference results in conv unit tests
+      -- Enable rigorous conv problem sizes in conv unit tests
+      -- Grid Dependency Control (GDC) is enabled for SM100 kernels (required for programmatic dependent launches).
+      -- Using the following NVCC flags:
+        --expt-relaxed-constexpr
+        -ftemplate-backtrace-limit=0
+        -DCUTLASS_TEST_LEVEL=0
+        -DCUTLASS_TEST_ENABLE_CACHED_RESULTS=1
+        -DCUTLASS_CONV_UNIT_TEST_RIGOROUS_SIZE_ENABLED=1
+        -DCUTLASS_DEBUG_TRACE_LEVEL=0
+        -Xcompiler=-Wconversion
+        -Xcompiler=-fno-strict-aliasing
+        -lineinfo
+      -- Configuring cublas ...
+      -- cuBLAS Disabled.
+      -- Configuring cuBLAS ... done.
+      -- Not building Machete kernels as no compatible archs found in CUDA target architectures
+      -- Marlin generation script hash: 82e94a64bad7c6239dfa4bebe9f1de9f(ARCH:8.0)
+      -- Last run Marlin generate script hash:
+      -- Marlin generation completed successfully.
+      -- Building Marlin kernels for archs: 8.0+PTX
+      -- Not building dsv3_fused_a_gemm as no compatible archs found in CUDA target architectures.
+      -- Not building fp32_router_gemm as no compatible archs found (requires SM90+ and CUDA >= 12.0).
+      -- Building AllSpark kernels for archs: 8.0
+      -- Not building scaled_mm_c3x_sm90 as no compatible archs found in CUDA target architectures
+      -- Not building scaled_mm_c3x_120 as no compatible archs found in CUDA target architectures
+      -- Not building scaled_mm_c3x_100 as no compatible archs found in CUDA target architectures
+      -- Building scaled_mm_c2x for archs: 8.0
+      -- Not building grouped_mm_c3x as no compatible archs found in CUDA target architectures.
+      -- Not building grouped_mm_c3x as no compatible archs found in CUDA target architectures.
+      -- Not building moe_data as no compatible archs found in CUDA target architectures.
+      -- Not building SM12x NVFP4 as no compatible archs were found.
+      -- Not building SM10x/11x NVFP4/MXFP4 as no compatible archs were found.
+      -- Not building W4A8 kernels as no compatible archs found in CUDA target architectures
+      -- Not building CUTLASS MLA as no compatible archs were found.
+      -- Building hadacore
+      -- Enabling C_stable extension.
+      -- Marlin MOE generation script hash with arch: 6aba15a546d84e079b704ba4f0026527(ARCH:8.0)
+      -- Last run Marlin MOE generate script hash with arch:
+      -- Marlin MOE generation completed successfully.
+      -- Building Marlin MOE kernels for archs: 8.0+PTX
+      -- Not building DSV3 router GEMM kernels as no compatible archs found (requires SM90+ and CUDA >= 12.0)
+      -- Enabling MoE C_stable extension.
+      -- [triton_kernels] Fetch from https://github.com/triton-lang/triton.git:v3.5.1
+      -- [triton_kernels] triton_kernels is available at /home/damamatin/vllm/.deps/triton_kernels-src/python/triton_kernels/triton_kernels/
+      -- DeepGEMM is available at /home/damamatin/vllm/.deps/deepgemm-src
+      -- DeepGEMM will not compile: unsupported CUDA architecture 8.0
+      -- fmha_sm100 is available at /home/damamatin/vllm/.deps/fmha_sm100-src
+      -- FlashMLA is available at /home/damamatin/vllm/.deps/flashmla-src
+      -- FlashMLA will not compile: unsupported CUDA architecture 8.0
+      -- [QUTLASS] QuTLASS is available at /home/damamatin/vllm/.deps/qutlass-src
+      -- [QUTLASS] Skipping build: CUDA 12.8 or newer is required (found 12.1.66).
+      -- Build type: RelWithDebInfo
+      -- Target device: cuda
+      -- Found Python: /home/damamatin/.cache/uv/builds-v0/.tmpKKKWwS/bin/python (found version "3.12.11") found components: Interpreter Development.Module Development.SABIModule
+      -- CUDA target architectures: 8.0
+      -- CUDA supported target architectures: 8.0
+      -- FA2_ARCHS: 8.0+PTX
+      -- FA3_ARCHS:
+      -- vllm-flash-attn is available at /home/damamatin/vllm/.deps/vllm-flash-attn-src
+      -- Configuring done (101.5s)
+      -- Generating done (0.1s)
+      -- Build files have been written to: /tmp/tmpj6d4pfro.build-temp
+      [1/141] Building CXX object CMakeFiles/spinloop.dir/csrc/spinloop.cpp.o
+      [2/141] Building CXX object CMakeFiles/cumem_allocator.dir/csrc/cumem_allocator.cpp.o
+      FAILED: [code=1] CMakeFiles/cumem_allocator.dir/csrc/cumem_allocator.cpp.o
+      /usr/bin/c++ -DPy_LIMITED_API=0x03080000 -DTORCH_EXTENSION_NAME=cumem_allocator -DUSE_C10D_GLOO -DUSE_C10D_NCCL -DUSE_DISTRIBUTED -DUSE_NVSHMEM -DUSE_RPC
+      -DUSE_TENSORPIPE -Dcumem_allocator_EXPORTS -I/home/damamatin/vllm/csrc -isystem /home/damamatin/.local/share/uv/python/cpython-3.12.11-linux-x86_64-gnu/include/python3.12
+      -isystem /home/damamatin/.cache/uv/builds-v0/.tmpKKKWwS/lib/python3.12/site-packages/torch/include -isystem
+      /home/damamatin/.cache/uv/builds-v0/.tmpKKKWwS/lib/python3.12/site-packages/torch/include/torch/csrc/api/include -isystem /usr/local/cuda/include -I/usr/local/cuda/include
+      -O2 -g -DNDEBUG -std=gnu++20 -fPIC -MD -MT CMakeFiles/cumem_allocator.dir/csrc/cumem_allocator.cpp.o -MF CMakeFiles/cumem_allocator.dir/csrc/cumem_allocator.cpp.o.d -o
+      CMakeFiles/cumem_allocator.dir/csrc/cumem_allocator.cpp.o -c /home/damamatin/vllm/csrc/cumem_allocator.cpp
+      /home/damamatin/vllm/csrc/cumem_allocator.cpp: In function ‘void create_and_map(long long unsigned int, ssize_t, CUdeviceptr, CUmemGenericAllocationHandle*)’:
+      /home/damamatin/vllm/csrc/cumem_allocator.cpp:145:18: error: ‘CU_DEVICE_ATTRIBUTE_HANDLE_TYPE_FABRIC_SUPPORTED’ was not declared in this scope; did you mean
+      ‘CU_DEVICE_ATTRIBUTE_HANDLE_TYPE_WIN32_HANDLE_SUPPORTED’?
+        145 |       &fab_flag, CU_DEVICE_ATTRIBUTE_HANDLE_TYPE_FABRIC_SUPPORTED, device);
+            |                  ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+            |                  CU_DEVICE_ATTRIBUTE_HANDLE_TYPE_WIN32_HANDLE_SUPPORTED
+      /home/damamatin/vllm/csrc/cumem_allocator.cpp:148:33: error: ‘CU_MEM_HANDLE_TYPE_FABRIC’ was not declared in this scope; did you mean ‘CU_MEM_HANDLE_TYPE_GENERIC’?
+        148 |     prop.requestedHandleTypes = CU_MEM_HANDLE_TYPE_FABRIC;
+            |                                 ^~~~~~~~~~~~~~~~~~~~~~~~~
+            |                                 CU_MEM_HANDLE_TYPE_GENERIC
+      [3/141] Building CUDA object CMakeFiles/_C_stable_libtorch.dir/csrc/libtorch_stable/quantization/activation_kernels.cu.o
+      FAILED: [code=1] CMakeFiles/_C_stable_libtorch.dir/csrc/libtorch_stable/quantization/activation_kernels.cu.o
+      /usr/local/cuda/bin/nvcc -forward-unknown-to-host-compiler -DCUTLASS_ENABLE_DIRECT_CUDA_DRIVER_CALL=1 -DPy_LIMITED_API=3
+      -DTORCH_EXTENSION_NAME=_C_stable_libtorch -DTORCH_TARGET_VERSION=0x020B000000000000ULL -DUSE_C10D_GLOO -DUSE_C10D_NCCL -DUSE_CUDA -DUSE_DISTRIBUTED
+      -DUSE_NVSHMEM -DUSE_RPC -DUSE_TENSORPIPE -D_C_stable_libtorch_EXPORTS -I/home/damamatin/vllm/csrc -I/home/damamatin/vllm/.deps/cutlass-src/include
+      -I/home/damamatin/vllm/.deps/cutlass-src/tools/util/include -isystem /home/damamatin/.local/share/uv/python/cpython-3.12.11-linux-x86_64-gnu/include/python3.12
+      -isystem /home/damamatin/.cache/uv/builds-v0/.tmpKKKWwS/lib/python3.12/site-packages/torch/include -isystem
+      /home/damamatin/.cache/uv/builds-v0/.tmpKKKWwS/lib/python3.12/site-packages/torch/include/torch/csrc/api/include -isystem /usr/local/cuda/include -DONNX_NAMESPACE=onnx_c2 -Xcudafe
+      --diag_suppress=cc_clobber_ignored,--diag_suppress=field_without_dll_interface,--diag_suppress=base_class_has_different_dll_interface,--diag_suppress=dll_interface_conflict_none_assumed,--diag_suppress=dll_interface_conflict_dllexport_assumed,--diag_suppress=bad_friend_decl
+      --expt-relaxed-constexpr --expt-extended-lambda -O2 -g -DNDEBUG -std=c++20 -Xcompiler=-fPIC --expt-relaxed-constexpr -DENABLE_FP8 --threads=1
+      -DENABLE_SCALED_MM_C2X=1 -gencode arch=compute_80,code=sm_80 -MD -MT CMakeFiles/_C_stable_libtorch.dir/csrc/libtorch_stable/quantization/activation_kernels.cu.o -MF
+      CMakeFiles/_C_stable_libtorch.dir/csrc/libtorch_stable/quantization/activation_kernels.cu.o.d -x cu -c /home/damamatin/vllm/csrc/libtorch_stable/quantization/activation_kernels.cu
+      -o CMakeFiles/_C_stable_libtorch.dir/csrc/libtorch_stable/quantization/activation_kernels.cu.o
+      /home/damamatin/vllm/csrc/libtorch_stable/quantization/activation_kernels.cu(299): error: expression must have a constant value
+          static constexpr __nv_bfloat16 fp8_min = get_fp8_min<fp8_type>();
+                                                   ^
+      /home/damamatin/vllm/csrc/libtorch_stable/quantization/activation_kernels.cu(222): note #2703-D: cannot call non-constexpr function "__nv_bfloat16::__nv_bfloat16(const
+      __nv_bfloat16_raw &)" (declared at line 177 of /usr/local/cuda/include/cuda_bf16.hpp)
+            return __nv_bfloat16(__nv_bfloat16_raw{.x = 50144});
+            ^
+                detected during instantiation of "void
+      vllm::silu_mul_fp8_quant_deep_gemm_kernel<BLOCK_COUNT,SMEM_SIZE_BYTES_Y,fp8_type,scale_t,THREADS,Idx_t,CEIL_UE8M0,GROUP_SIZE,NUM_STAGES>(const __nv_bfloat16 *, fp8_type *,
+      scale_t *, const int32_t *, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t) [with BLOCK_COUNT=4224, SMEM_SIZE_BYTES_Y=16384,
+      fp8_type=c10::Float8_e4m3fn, scale_t=float, THREADS=256, Idx_t=int64_t, CEIL_UE8M0=false, GROUP_SIZE=128, NUM_STAGES=4]" at line 691
+
+      /home/damamatin/vllm/csrc/libtorch_stable/quantization/activation_kernels.cu(300): error: expression must have a constant value
+          static constexpr __nv_bfloat16 fp8_max = get_fp8_max<fp8_type>();
+                                                   ^
+      /home/damamatin/vllm/csrc/libtorch_stable/quantization/activation_kernels.cu(211): note #2703-D: cannot call non-constexpr function "__nv_bfloat16::__nv_bfloat16(const
+      __nv_bfloat16_raw &)" (declared at line 177 of /usr/local/cuda/include/cuda_bf16.hpp)
+            return __nv_bfloat16(__nv_bfloat16_raw{.x = 17376});
+            ^
+                detected during instantiation of "void
+      vllm::silu_mul_fp8_quant_deep_gemm_kernel<BLOCK_COUNT,SMEM_SIZE_BYTES_Y,fp8_type,scale_t,THREADS,Idx_t,CEIL_UE8M0,GROUP_SIZE,NUM_STAGES>(const __nv_bfloat16 *, fp8_type *,
+      scale_t *, const int32_t *, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t) [with BLOCK_COUNT=4224, SMEM_SIZE_BYTES_Y=16384,
+      fp8_type=c10::Float8_e4m3fn, scale_t=float, THREADS=256, Idx_t=int64_t, CEIL_UE8M0=false, GROUP_SIZE=128, NUM_STAGES=4]" at line 691
+
+      /home/damamatin/vllm/csrc/libtorch_stable/quantization/activation_kernels.cu(302): error: expression must have a constant value
+          static constexpr __nv_bfloat16 EPS = (__nv_bfloat16_raw{.x = 11996});
+                                               ^
+      /home/damamatin/vllm/csrc/libtorch_stable/quantization/activation_kernels.cu(302): note #2703-D: cannot call non-constexpr function "__nv_bfloat16::__nv_bfloat16(const
+      __nv_bfloat16_raw &)" (declared at line 177 of /usr/local/cuda/include/cuda_bf16.hpp)
+          static constexpr __nv_bfloat16 EPS = (__nv_bfloat16_raw{.x = 11996});
+                                               ^
+                detected during instantiation of "void
+      vllm::silu_mul_fp8_quant_deep_gemm_kernel<BLOCK_COUNT,SMEM_SIZE_BYTES_Y,fp8_type,scale_t,THREADS,Idx_t,CEIL_UE8M0,GROUP_SIZE,NUM_STAGES>(const __nv_bfloat16 *, fp8_type *,
+      scale_t *, const int32_t *, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t) [with BLOCK_COUNT=4224, SMEM_SIZE_BYTES_Y=16384,
+      fp8_type=c10::Float8_e4m3fn, scale_t=float, THREADS=256, Idx_t=int64_t, CEIL_UE8M0=false, GROUP_SIZE=128, NUM_STAGES=4]" at line 691
+
+      /home/damamatin/vllm/csrc/libtorch_stable/quantization/activation_kernels.cu(299): error: expression must have a constant value
+          static constexpr __nv_bfloat16 fp8_min = get_fp8_min<fp8_type>();
+                                                   ^
+      /home/damamatin/vllm/csrc/libtorch_stable/quantization/activation_kernels.cu(222): note #2703-D: cannot call non-constexpr function "__nv_bfloat16::__nv_bfloat16(const
+      __nv_bfloat16_raw &)" (declared at line 177 of /usr/local/cuda/include/cuda_bf16.hpp)
+            return __nv_bfloat16(__nv_bfloat16_raw{.x = 50144});
+            ^
+                detected during instantiation of "void
+      vllm::silu_mul_fp8_quant_deep_gemm_kernel<BLOCK_COUNT,SMEM_SIZE_BYTES_Y,fp8_type,scale_t,THREADS,Idx_t,CEIL_UE8M0,GROUP_SIZE,NUM_STAGES>(const __nv_bfloat16 *, fp8_type *,
+      scale_t *, const int32_t *, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t) [with BLOCK_COUNT=4224, SMEM_SIZE_BYTES_Y=1024,
+      fp8_type=c10::Float8_e4m3fn, scale_t=float, THREADS=32, Idx_t=int64_t, CEIL_UE8M0=false, GROUP_SIZE=128, NUM_STAGES=2]" at line 691
+
+      /home/damamatin/vllm/csrc/libtorch_stable/quantization/activation_kernels.cu(300): error: expression must have a constant value
+          static constexpr __nv_bfloat16 fp8_max = get_fp8_max<fp8_type>();
+                                                   ^
+      /home/damamatin/vllm/csrc/libtorch_stable/quantization/activation_kernels.cu(211): note #2703-D: cannot call non-constexpr function "__nv_bfloat16::__nv_bfloat16(const
+      __nv_bfloat16_raw &)" (declared at line 177 of /usr/local/cuda/include/cuda_bf16.hpp)
+            return __nv_bfloat16(__nv_bfloat16_raw{.x = 17376});
+            ^
+                detected during instantiation of "void
+      vllm::silu_mul_fp8_quant_deep_gemm_kernel<BLOCK_COUNT,SMEM_SIZE_BYTES_Y,fp8_type,scale_t,THREADS,Idx_t,CEIL_UE8M0,GROUP_SIZE,NUM_STAGES>(const __nv_bfloat16 *, fp8_type *,
+      scale_t *, const int32_t *, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t) [with BLOCK_COUNT=4224, SMEM_SIZE_BYTES_Y=1024,
+      fp8_type=c10::Float8_e4m3fn, scale_t=float, THREADS=32, Idx_t=int64_t, CEIL_UE8M0=false, GROUP_SIZE=128, NUM_STAGES=2]" at line 691
+
+      /home/damamatin/vllm/csrc/libtorch_stable/quantization/activation_kernels.cu(302): error: expression must have a constant value
+          static constexpr __nv_bfloat16 EPS = (__nv_bfloat16_raw{.x = 11996});
+                                               ^
+      /home/damamatin/vllm/csrc/libtorch_stable/quantization/activation_kernels.cu(302): note #2703-D: cannot call non-constexpr function "__nv_bfloat16::__nv_bfloat16(const
+      __nv_bfloat16_raw &)" (declared at line 177 of /usr/local/cuda/include/cuda_bf16.hpp)
+          static constexpr __nv_bfloat16 EPS = (__nv_bfloat16_raw{.x = 11996});
+                                               ^
+                detected during instantiation of "void
+      vllm::silu_mul_fp8_quant_deep_gemm_kernel<BLOCK_COUNT,SMEM_SIZE_BYTES_Y,fp8_type,scale_t,THREADS,Idx_t,CEIL_UE8M0,GROUP_SIZE,NUM_STAGES>(const __nv_bfloat16 *, fp8_type *,
+      scale_t *, const int32_t *, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t) [with BLOCK_COUNT=4224, SMEM_SIZE_BYTES_Y=1024,
+      fp8_type=c10::Float8_e4m3fn, scale_t=float, THREADS=32, Idx_t=int64_t, CEIL_UE8M0=false, GROUP_SIZE=128, NUM_STAGES=2]" at line 691
+
+      /home/damamatin/vllm/csrc/libtorch_stable/quantization/activation_kernels.cu(299): error: expression must have a constant value
+          static constexpr __nv_bfloat16 fp8_min = get_fp8_min<fp8_type>();
+                                                   ^
+      /home/damamatin/vllm/csrc/libtorch_stable/quantization/activation_kernels.cu(222): note #2703-D: cannot call non-constexpr function "__nv_bfloat16::__nv_bfloat16(const
+      __nv_bfloat16_raw &)" (declared at line 177 of /usr/local/cuda/include/cuda_bf16.hpp)
+            return __nv_bfloat16(__nv_bfloat16_raw{.x = 50144});
+            ^
+                detected during instantiation of "void
+      vllm::silu_mul_fp8_quant_deep_gemm_kernel<BLOCK_COUNT,SMEM_SIZE_BYTES_Y,fp8_type,scale_t,THREADS,Idx_t,CEIL_UE8M0,GROUP_SIZE,NUM_STAGES>(const __nv_bfloat16 *, fp8_type *,
+      scale_t *, const int32_t *, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t) [with BLOCK_COUNT=4224, SMEM_SIZE_BYTES_Y=16384,
+      fp8_type=c10::Float8_e4m3fn, scale_t=float, THREADS=256, Idx_t=int64_t, CEIL_UE8M0=true, GROUP_SIZE=128, NUM_STAGES=4]" at line 698
+
+      /home/damamatin/vllm/csrc/libtorch_stable/quantization/activation_kernels.cu(300): error: expression must have a constant value
+          static constexpr __nv_bfloat16 fp8_max = get_fp8_max<fp8_type>();
+                                                   ^
+      /home/damamatin/vllm/csrc/libtorch_stable/quantization/activation_kernels.cu(211): note #2703-D: cannot call non-constexpr function "__nv_bfloat16::__nv_bfloat16(const
+      __nv_bfloat16_raw &)" (declared at line 177 of /usr/local/cuda/include/cuda_bf16.hpp)
+            return __nv_bfloat16(__nv_bfloat16_raw{.x = 17376});
+            ^
+                detected during instantiation of "void
+      vllm::silu_mul_fp8_quant_deep_gemm_kernel<BLOCK_COUNT,SMEM_SIZE_BYTES_Y,fp8_type,scale_t,THREADS,Idx_t,CEIL_UE8M0,GROUP_SIZE,NUM_STAGES>(const __nv_bfloat16 *, fp8_type *,
+      scale_t *, const int32_t *, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t) [with BLOCK_COUNT=4224, SMEM_SIZE_BYTES_Y=16384,
+      fp8_type=c10::Float8_e4m3fn, scale_t=float, THREADS=256, Idx_t=int64_t, CEIL_UE8M0=true, GROUP_SIZE=128, NUM_STAGES=4]" at line 698
+
+      /home/damamatin/vllm/csrc/libtorch_stable/quantization/activation_kernels.cu(302): error: expression must have a constant value
+          static constexpr __nv_bfloat16 EPS = (__nv_bfloat16_raw{.x = 11996});
+                                               ^
+      /home/damamatin/vllm/csrc/libtorch_stable/quantization/activation_kernels.cu(302): note #2703-D: cannot call non-constexpr function "__nv_bfloat16::__nv_bfloat16(const
+      __nv_bfloat16_raw &)" (declared at line 177 of /usr/local/cuda/include/cuda_bf16.hpp)
+          static constexpr __nv_bfloat16 EPS = (__nv_bfloat16_raw{.x = 11996});
+                                               ^
+                detected during instantiation of "void
+      vllm::silu_mul_fp8_quant_deep_gemm_kernel<BLOCK_COUNT,SMEM_SIZE_BYTES_Y,fp8_type,scale_t,THREADS,Idx_t,CEIL_UE8M0,GROUP_SIZE,NUM_STAGES>(const __nv_bfloat16 *, fp8_type *,
+      scale_t *, const int32_t *, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t) [with BLOCK_COUNT=4224, SMEM_SIZE_BYTES_Y=16384,
+      fp8_type=c10::Float8_e4m3fn, scale_t=float, THREADS=256, Idx_t=int64_t, CEIL_UE8M0=true, GROUP_SIZE=128, NUM_STAGES=4]" at line 698
+
+      /home/damamatin/vllm/csrc/libtorch_stable/quantization/activation_kernels.cu(299): error: expression must have a constant value
+          static constexpr __nv_bfloat16 fp8_min = get_fp8_min<fp8_type>();
+                                                   ^
+      /home/damamatin/vllm/csrc/libtorch_stable/quantization/activation_kernels.cu(222): note #2703-D: cannot call non-constexpr function "__nv_bfloat16::__nv_bfloat16(const
+      __nv_bfloat16_raw &)" (declared at line 177 of /usr/local/cuda/include/cuda_bf16.hpp)
+            return __nv_bfloat16(__nv_bfloat16_raw{.x = 50144});
+            ^
+                detected during instantiation of "void
+      vllm::silu_mul_fp8_quant_deep_gemm_kernel<BLOCK_COUNT,SMEM_SIZE_BYTES_Y,fp8_type,scale_t,THREADS,Idx_t,CEIL_UE8M0,GROUP_SIZE,NUM_STAGES>(const __nv_bfloat16 *, fp8_type *,
+      scale_t *, const int32_t *, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t) [with BLOCK_COUNT=4224, SMEM_SIZE_BYTES_Y=1024,
+      fp8_type=c10::Float8_e4m3fn, scale_t=float, THREADS=32, Idx_t=int64_t, CEIL_UE8M0=true, GROUP_SIZE=128, NUM_STAGES=2]" at line 698
+
+      /home/damamatin/vllm/csrc/libtorch_stable/quantization/activation_kernels.cu(300): error: expression must have a constant value
+          static constexpr __nv_bfloat16 fp8_max = get_fp8_max<fp8_type>();
+                                                   ^
+      /home/damamatin/vllm/csrc/libtorch_stable/quantization/activation_kernels.cu(211): note #2703-D: cannot call non-constexpr function "__nv_bfloat16::__nv_bfloat16(const
+      __nv_bfloat16_raw &)" (declared at line 177 of /usr/local/cuda/include/cuda_bf16.hpp)
+            return __nv_bfloat16(__nv_bfloat16_raw{.x = 17376});
+            ^
+                detected during instantiation of "void
+      vllm::silu_mul_fp8_quant_deep_gemm_kernel<BLOCK_COUNT,SMEM_SIZE_BYTES_Y,fp8_type,scale_t,THREADS,Idx_t,CEIL_UE8M0,GROUP_SIZE,NUM_STAGES>(const __nv_bfloat16 *, fp8_type *,
+      scale_t *, const int32_t *, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t) [with BLOCK_COUNT=4224, SMEM_SIZE_BYTES_Y=1024,
+      fp8_type=c10::Float8_e4m3fn, scale_t=float, THREADS=32, Idx_t=int64_t, CEIL_UE8M0=true, GROUP_SIZE=128, NUM_STAGES=2]" at line 698
+
+      /home/damamatin/vllm/csrc/libtorch_stable/quantization/activation_kernels.cu(302): error: expression must have a constant value
+          static constexpr __nv_bfloat16 EPS = (__nv_bfloat16_raw{.x = 11996});
+                                               ^
+      /home/damamatin/vllm/csrc/libtorch_stable/quantization/activation_kernels.cu(302): note #2703-D: cannot call non-constexpr function "__nv_bfloat16::__nv_bfloat16(const
+      __nv_bfloat16_raw &)" (declared at line 177 of /usr/local/cuda/include/cuda_bf16.hpp)
+          static constexpr __nv_bfloat16 EPS = (__nv_bfloat16_raw{.x = 11996});
+                                               ^
+                detected during instantiation of "void
+      vllm::silu_mul_fp8_quant_deep_gemm_kernel<BLOCK_COUNT,SMEM_SIZE_BYTES_Y,fp8_type,scale_t,THREADS,Idx_t,CEIL_UE8M0,GROUP_SIZE,NUM_STAGES>(const __nv_bfloat16 *, fp8_type *,
+      scale_t *, const int32_t *, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t) [with BLOCK_COUNT=4224, SMEM_SIZE_BYTES_Y=1024,
+      fp8_type=c10::Float8_e4m3fn, scale_t=float, THREADS=32, Idx_t=int64_t, CEIL_UE8M0=true, GROUP_SIZE=128, NUM_STAGES=2]" at line 698
+
+      /home/damamatin/vllm/csrc/libtorch_stable/quantization/activation_kernels.cu(299): error: expression must have a constant value
+          static constexpr __nv_bfloat16 fp8_min = get_fp8_min<fp8_type>();
+                                                   ^
+      /home/damamatin/vllm/csrc/libtorch_stable/quantization/activation_kernels.cu(222): note #2703-D: cannot call non-constexpr function "__nv_bfloat16::__nv_bfloat16(const
+      __nv_bfloat16_raw &)" (declared at line 177 of /usr/local/cuda/include/cuda_bf16.hpp)
+            return __nv_bfloat16(__nv_bfloat16_raw{.x = 50144});
+            ^
+                detected during instantiation of "void
+      vllm::silu_mul_fp8_quant_deep_gemm_kernel<BLOCK_COUNT,SMEM_SIZE_BYTES_Y,fp8_type,scale_t,THREADS,Idx_t,CEIL_UE8M0,GROUP_SIZE,NUM_STAGES>(const __nv_bfloat16 *, fp8_type *,
+      scale_t *, const int32_t *, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t) [with BLOCK_COUNT=4224, SMEM_SIZE_BYTES_Y=16384,
+      fp8_type=c10::Float8_e4m3fn, scale_t=uint8_t, THREADS=256, Idx_t=int64_t, CEIL_UE8M0=true, GROUP_SIZE=128, NUM_STAGES=4]" at line 736
+
+      /home/damamatin/vllm/csrc/libtorch_stable/quantization/activation_kernels.cu(300): error: expression must have a constant value
+          static constexpr __nv_bfloat16 fp8_max = get_fp8_max<fp8_type>();
+                                                   ^
+      /home/damamatin/vllm/csrc/libtorch_stable/quantization/activation_kernels.cu(211): note #2703-D: cannot call non-constexpr function "__nv_bfloat16::__nv_bfloat16(const
+      __nv_bfloat16_raw &)" (declared at line 177 of /usr/local/cuda/include/cuda_bf16.hpp)
+            return __nv_bfloat16(__nv_bfloat16_raw{.x = 17376});
+            ^
+                detected during instantiation of "void
+      vllm::silu_mul_fp8_quant_deep_gemm_kernel<BLOCK_COUNT,SMEM_SIZE_BYTES_Y,fp8_type,scale_t,THREADS,Idx_t,CEIL_UE8M0,GROUP_SIZE,NUM_STAGES>(const __nv_bfloat16 *, fp8_type *,
+      scale_t *, const int32_t *, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t) [with BLOCK_COUNT=4224, SMEM_SIZE_BYTES_Y=16384,
+      fp8_type=c10::Float8_e4m3fn, scale_t=uint8_t, THREADS=256, Idx_t=int64_t, CEIL_UE8M0=true, GROUP_SIZE=128, NUM_STAGES=4]" at line 736
+
+      /home/damamatin/vllm/csrc/libtorch_stable/quantization/activation_kernels.cu(302): error: expression must have a constant value
+          static constexpr __nv_bfloat16 EPS = (__nv_bfloat16_raw{.x = 11996});
+                                               ^
+      /home/damamatin/vllm/csrc/libtorch_stable/quantization/activation_kernels.cu(302): note #2703-D: cannot call non-constexpr function "__nv_bfloat16::__nv_bfloat16(const
+      __nv_bfloat16_raw &)" (declared at line 177 of /usr/local/cuda/include/cuda_bf16.hpp)
+          static constexpr __nv_bfloat16 EPS = (__nv_bfloat16_raw{.x = 11996});
+                                               ^
+                detected during instantiation of "void
+      vllm::silu_mul_fp8_quant_deep_gemm_kernel<BLOCK_COUNT,SMEM_SIZE_BYTES_Y,fp8_type,scale_t,THREADS,Idx_t,CEIL_UE8M0,GROUP_SIZE,NUM_STAGES>(const __nv_bfloat16 *, fp8_type *,
+      scale_t *, const int32_t *, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t) [with BLOCK_COUNT=4224, SMEM_SIZE_BYTES_Y=16384,
+      fp8_type=c10::Float8_e4m3fn, scale_t=uint8_t, THREADS=256, Idx_t=int64_t, CEIL_UE8M0=true, GROUP_SIZE=128, NUM_STAGES=4]" at line 736
+
+      /home/damamatin/vllm/csrc/libtorch_stable/quantization/activation_kernels.cu(299): error: expression must have a constant value
+          static constexpr __nv_bfloat16 fp8_min = get_fp8_min<fp8_type>();
+                                                   ^
+      /home/damamatin/vllm/csrc/libtorch_stable/quantization/activation_kernels.cu(222): note #2703-D: cannot call non-constexpr function "__nv_bfloat16::__nv_bfloat16(const
+      __nv_bfloat16_raw &)" (declared at line 177 of /usr/local/cuda/include/cuda_bf16.hpp)
+            return __nv_bfloat16(__nv_bfloat16_raw{.x = 50144});
+            ^
+                detected during instantiation of "void
+      vllm::silu_mul_fp8_quant_deep_gemm_kernel<BLOCK_COUNT,SMEM_SIZE_BYTES_Y,fp8_type,scale_t,THREADS,Idx_t,CEIL_UE8M0,GROUP_SIZE,NUM_STAGES>(const __nv_bfloat16 *, fp8_type *,
+      scale_t *, const int32_t *, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t) [with BLOCK_COUNT=4224, SMEM_SIZE_BYTES_Y=1024,
+      fp8_type=c10::Float8_e4m3fn, scale_t=uint8_t, THREADS=32, Idx_t=int64_t, CEIL_UE8M0=true, GROUP_SIZE=128, NUM_STAGES=2]" at line 736
+
+      /home/damamatin/vllm/csrc/libtorch_stable/quantization/activation_kernels.cu(300): error: expression must have a constant value
+          static constexpr __nv_bfloat16 fp8_max = get_fp8_max<fp8_type>();
+                                                   ^
+      /home/damamatin/vllm/csrc/libtorch_stable/quantization/activation_kernels.cu(211): note #2703-D: cannot call non-constexpr function "__nv_bfloat16::__nv_bfloat16(const
+      __nv_bfloat16_raw &)" (declared at line 177 of /usr/local/cuda/include/cuda_bf16.hpp)
+            return __nv_bfloat16(__nv_bfloat16_raw{.x = 17376});
+            ^
+                detected during instantiation of "void
+      vllm::silu_mul_fp8_quant_deep_gemm_kernel<BLOCK_COUNT,SMEM_SIZE_BYTES_Y,fp8_type,scale_t,THREADS,Idx_t,CEIL_UE8M0,GROUP_SIZE,NUM_STAGES>(const __nv_bfloat16 *, fp8_type *,
+      scale_t *, const int32_t *, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t) [with BLOCK_COUNT=4224, SMEM_SIZE_BYTES_Y=1024,
+      fp8_type=c10::Float8_e4m3fn, scale_t=uint8_t, THREADS=32, Idx_t=int64_t, CEIL_UE8M0=true, GROUP_SIZE=128, NUM_STAGES=2]" at line 736
+
+      /home/damamatin/vllm/csrc/libtorch_stable/quantization/activation_kernels.cu(302): error: expression must have a constant value
+          static constexpr __nv_bfloat16 EPS = (__nv_bfloat16_raw{.x = 11996});
+                                               ^
+      /home/damamatin/vllm/csrc/libtorch_stable/quantization/activation_kernels.cu(302): note #2703-D: cannot call non-constexpr function "__nv_bfloat16::__nv_bfloat16(const
+      __nv_bfloat16_raw &)" (declared at line 177 of /usr/local/cuda/include/cuda_bf16.hpp)
+          static constexpr __nv_bfloat16 EPS = (__nv_bfloat16_raw{.x = 11996});
+                                               ^
+                detected during instantiation of "void
+      vllm::silu_mul_fp8_quant_deep_gemm_kernel<BLOCK_COUNT,SMEM_SIZE_BYTES_Y,fp8_type,scale_t,THREADS,Idx_t,CEIL_UE8M0,GROUP_SIZE,NUM_STAGES>(const __nv_bfloat16 *, fp8_type *,
+      scale_t *, const int32_t *, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t, Idx_t) [with BLOCK_COUNT=4224, SMEM_SIZE_BYTES_Y=1024,
+      fp8_type=c10::Float8_e4m3fn, scale_t=uint8_t, THREADS=32, Idx_t=int64_t, CEIL_UE8M0=true, GROUP_SIZE=128, NUM_STAGES=2]" at line 736
+
+      18 errors detected in the compilation of "/home/damamatin/vllm/csrc/libtorch_stable/quantization/activation_kernels.cu".
+      [4/141] Building CUDA object CMakeFiles/_C_stable_libtorch.dir/csrc/libtorch_stable/quantization/w8a8/int8/per_token_group_quant.cu.o
+      [5/141] Building CUDA object CMakeFiles/_C_stable_libtorch.dir/csrc/libtorch_stable/activation_kernels.cu.o
+      [6/141] Building CUDA object CMakeFiles/_C_stable_libtorch.dir/csrc/libtorch_stable/quantization/w8a8/int8/scaled_quant.cu.o
+      [7/141] Building CXX object CMakeFiles/_C_stable_libtorch.dir/csrc/libtorch_stable/torch_bindings.cpp.o
+      [8/141] Building CUDA object CMakeFiles/_C_stable_libtorch.dir/csrc/libtorch_stable/quantization/w8a8/fp8/per_token_group_quant.cu.o
+      [9/141] Building CUDA object CMakeFiles/_C_stable_libtorch.dir/csrc/libtorch_stable/quantization/w8a8/fp8/common.cu.o
+      /home/damamatin/vllm/csrc/libtorch_stable/quantization/w8a8/fp8/../../../../quantization/w8a8/fp8/../../utils.cuh:42:1: warning: ‘host’ attribute directive ignored [-Wattributes]
+         42 | MAYBE_HOST_DEVICE static constexpr T quant_type_max_v =
+            | ^~~~~~~~~~~~~~~~
+      ninja: build stopped: subcommand failed.
+
+      [stderr]
+      /home/damamatin/.cache/uv/builds-v0/.tmpKKKWwS/lib/python3.12/site-packages/torch/_subclasses/functional_tensor.py:307: UserWarning: Failed to initialize NumPy: No module named
+      'numpy' (Triggered internally at /pytorch/torch/csrc/utils/tensor_numpy.cpp:84.)
+        cpu = _conversion_method_template(device=torch.device("cpu"))
+      /home/damamatin/.cache/uv/builds-v0/.tmpKKKWwS/lib/python3.12/site-packages/setuptools_scm/_integration/version_inference.py:218: UserWarning: version of None already set
+        warnings.warn(f"version of {self.dist_name} already set")
+      CMake Warning at /home/damamatin/.cache/uv/builds-v0/.tmpKKKWwS/lib/python3.12/site-packages/torch/share/cmake/Caffe2/public/cuda.cmake:332 (message):
+        pytorch is not compatible with `CMAKE_CUDA_ARCHITECTURES` and will ignore
+        its value.  Please configure `TORCH_CUDA_ARCH_LIST` instead.
+      Call Stack (most recent call first):
+        /home/damamatin/.cache/uv/builds-v0/.tmpKKKWwS/lib/python3.12/site-packages/torch/share/cmake/Caffe2/Caffe2Config.cmake:86 (include)
+        /home/damamatin/.cache/uv/builds-v0/.tmpKKKWwS/lib/python3.12/site-packages/torch/share/cmake/Torch/TorchConfig.cmake:62 (find_package)
+        CMakeLists.txt:103 (find_package)
+
+
+      CMake Warning at /home/damamatin/.cache/uv/builds-v0/.tmpKKKWwS/lib/python3.12/site-packages/torch/share/cmake/Torch/TorchConfig.cmake:22 (message):
+        library kineto not found.
+      Call Stack (most recent call first):
+        /home/damamatin/.cache/uv/builds-v0/.tmpKKKWwS/lib/python3.12/site-packages/torch/share/cmake/Torch/TorchConfig.cmake:119 (append_torchlib_if_found)
+        CMakeLists.txt:103 (find_package)
+
+
+      CMake Warning (dev) at /home/damamatin/.cache/uv/builds-v0/.tmpKKKWwS/lib/python3.12/site-packages/cmake/data/share/cmake-4.3/Modules/FetchContent.cmake:1966 (message):
+        Calling FetchContent_Populate(fmha_sm100) is deprecated, call
+        FetchContent_MakeAvailable(fmha_sm100) instead.  Policy CMP0169 can be set
+        to OLD to allow FetchContent_Populate(fmha_sm100) to be called directly for
+        now, but the ability to call it with declared details will be removed
+        completely in a future version.
+      Call Stack (most recent call first):
+        cmake/external_projects/fmha_sm100.cmake:29 (FetchContent_Populate)
+        CMakeLists.txt:1387 (include)
+      This warning is for project developers.  Use -Wno-dev to suppress it.
+
+      CMake Warning at .deps/vllm-flash-attn-src/CMakeLists.txt:77 (message):
+        Pytorch version 2.4.0 expected for CUDA build, saw 2.11.0 instead.
+
+
+      Traceback (most recent call last):
+        File "<string>", line 11, in <module>
+        File "/home/damamatin/.cache/uv/builds-v0/.tmpKKKWwS/lib/python3.12/site-packages/setuptools/build_meta.py", line 472, in build_editable
+          return self._build_with_temp_dir(
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^
+        File "/home/damamatin/.cache/uv/builds-v0/.tmpKKKWwS/lib/python3.12/site-packages/setuptools/build_meta.py", line 408, in _build_with_temp_dir
+          self.run_setup()
+        File "/home/damamatin/.cache/uv/builds-v0/.tmpKKKWwS/lib/python3.12/site-packages/setuptools/build_meta.py", line 317, in run_setup
+          exec(code, locals())
+        File "<string>", line 1236, in <module>
+        File "/home/damamatin/.cache/uv/builds-v0/.tmpKKKWwS/lib/python3.12/site-packages/setuptools/__init__.py", line 117, in setup
+          return distutils.core.setup(**attrs)  # type: ignore[return-value]
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        File "/home/damamatin/.cache/uv/builds-v0/.tmpKKKWwS/lib/python3.12/site-packages/setuptools/_distutils/core.py", line 186, in setup
+          return run_commands(dist)
+                 ^^^^^^^^^^^^^^^^^^
+        File "/home/damamatin/.cache/uv/builds-v0/.tmpKKKWwS/lib/python3.12/site-packages/setuptools/_distutils/core.py", line 202, in run_commands
+          dist.run_commands()
+        File "/home/damamatin/.cache/uv/builds-v0/.tmpKKKWwS/lib/python3.12/site-packages/setuptools/_distutils/dist.py", line 1002, in run_commands
+          self.run_command(cmd)
+        File "/home/damamatin/.cache/uv/builds-v0/.tmpKKKWwS/lib/python3.12/site-packages/setuptools/dist.py", line 1107, in run_command
+          super().run_command(command)
+        File "/home/damamatin/.cache/uv/builds-v0/.tmpKKKWwS/lib/python3.12/site-packages/setuptools/_distutils/dist.py", line 1021, in run_command
+          cmd_obj.run()
+        File "/home/damamatin/.cache/uv/builds-v0/.tmpKKKWwS/lib/python3.12/site-packages/setuptools/command/editable_wheel.py", line 140, in run
+          self._create_wheel_file(bdist_wheel)
+        File "/home/damamatin/.cache/uv/builds-v0/.tmpKKKWwS/lib/python3.12/site-packages/setuptools/command/editable_wheel.py", line 350, in _create_wheel_file
+          files, mapping = self._run_build_commands(dist_name, unpacked, lib, tmp)
+                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        File "/home/damamatin/.cache/uv/builds-v0/.tmpKKKWwS/lib/python3.12/site-packages/setuptools/command/editable_wheel.py", line 273, in _run_build_commands
+          self._run_build_subcommands()
+        File "/home/damamatin/.cache/uv/builds-v0/.tmpKKKWwS/lib/python3.12/site-packages/setuptools/command/editable_wheel.py", line 300, in _run_build_subcommands
+          self.run_command(name)
+        File "/home/damamatin/.cache/uv/builds-v0/.tmpKKKWwS/lib/python3.12/site-packages/setuptools/_distutils/cmd.py", line 357, in run_command
+          self.distribution.run_command(command)
+        File "/home/damamatin/.cache/uv/builds-v0/.tmpKKKWwS/lib/python3.12/site-packages/setuptools/dist.py", line 1107, in run_command
+          super().run_command(command)
+        File "/home/damamatin/.cache/uv/builds-v0/.tmpKKKWwS/lib/python3.12/site-packages/setuptools/_distutils/dist.py", line 1021, in run_command
+          cmd_obj.run()
+        File "/home/damamatin/.cache/uv/builds-v0/.tmpKKKWwS/lib/python3.12/site-packages/setuptools_rust/setuptools_ext.py", line 177, in run
+          super().run()
+        File "<string>", line 385, in run
+        File "/home/damamatin/.cache/uv/builds-v0/.tmpKKKWwS/lib/python3.12/site-packages/setuptools/command/build_ext.py", line 97, in run
+          _build_ext.run(self)
+        File "/home/damamatin/.cache/uv/builds-v0/.tmpKKKWwS/lib/python3.12/site-packages/setuptools/_distutils/command/build_ext.py", line 368, in run
+          self.build_extensions()
+        File "<string>", line 354, in build_extensions
+        File "/home/damamatin/.local/share/uv/python/cpython-3.12.11-linux-x86_64-gnu/lib/python3.12/subprocess.py", line 413, in check_call
+          raise CalledProcessError(retcode, cmd)
+      subprocess.CalledProcessError: Command '['cmake', '--build', '.', '-j=8', '--target=cumem_allocator', '--target=triton_kernels', '--target=spinloop', '--target=_vllm_fa2_C',
+      '--target=_vllm_fa4_cutedsl_C', '--target=fmha_sm100', '--target=_C_stable_libtorch', '--target=_moe_C_stable_libtorch']' returned non-zero exit status 1.
+      An error occurred when building editable wheel for vllm.
+      See debugging tips in: https://setuptools.pypa.io/en/latest/userguide/development_mode.html#debugging-tips
+
+      hint: This usually indicates a problem with the package or the build environment.
