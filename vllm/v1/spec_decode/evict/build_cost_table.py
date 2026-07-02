@@ -182,7 +182,16 @@ def main(args) -> None:
             inversions,
         )
 
-    payload = {"unit": "ms", "model": args.model, "method": args.method, "costs": costs}
+    # Record the engine-normalized model id so validate_source compares like
+    # with like when VLLM_MODEL_REDIRECT_PATH rewrites ids at engine startup.
+    from vllm.transformers_utils.utils import maybe_model_redirect
+
+    payload = {
+        "unit": "ms",
+        "model": maybe_model_redirect(args.model),
+        "method": args.method,
+        "costs": costs,
+    }
     with open(args.out, "w") as f:
         json.dump(payload, f, indent=2)
     logger.info("Wrote EVICT cost table (%d entries) to %s", len(costs), args.out)

@@ -284,7 +284,11 @@ def derive(after: dict, before: dict, num_spec_tokens: int) -> dict:
     out["acceptance_rate"] = accepted / draft_tokens if draft_tokens else float("nan")
 
     distinct_milli = _diff_scalar(after, before, DISTINCT_EXPERTS_METRIC)
-    out["avg_distinct_experts"] = distinct_milli / 1000.0 / steps
+    # None (printed "n/a") when routing capture is off: zero total means "not
+    # measured", matching the engine log line's all-zero suppression.
+    out["avg_distinct_experts"] = (
+        distinct_milli / 1000.0 / steps if distinct_milli > 0 else None
+    )
 
     # Target forward binned by verified positions: T_T(j) = us[j+1]/count[j+1].
     us_by = _diff_vector(after, before, TF_US_BY_POS_METRIC)
@@ -312,10 +316,13 @@ def derive(after: dict, before: dict, num_spec_tokens: int) -> dict:
     experts_by = _diff_vector(after, before, EXPERTS_BY_POS_METRIC)
 
     def u_r(positions: int) -> float | None:
+        # A zero bin means "not measured" (dense target or routing capture
+        # off), not a zero expert count: real MoE capture yields U_r >= 1.
         if (
             positions < len(cnt_by)
             and cnt_by[positions] > 0
             and positions < len(experts_by)
+            and experts_by[positions] > 0
         ):
             return experts_by[positions] / cnt_by[positions] / 1000.0
         return None

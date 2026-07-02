@@ -1177,12 +1177,17 @@ class SpeculativeConfig:
             # Fail closed on a table profiled for a different model/method: a
             # stale table with sufficient coverage would otherwise be silently
             # reused, distorting every m* selection.
+            # For object-storage models ModelConfig.model is rewritten to a
+            # per-run download dir; model_weights keeps the original URI the
+            # profiler would have recorded, so prefer it for the comparison.
+            expected_model = None
+            if self.target_model_config is not None:
+                expected_model = (
+                    self.target_model_config.model_weights
+                    or self.target_model_config.model
+                )
             table.validate_source(
-                expected_model=(
-                    self.target_model_config.model
-                    if self.target_model_config is not None
-                    else None
-                ),
+                expected_model=expected_model,
                 expected_method=self.method,
                 source=str(self.evict_cost_table_path),
             )
