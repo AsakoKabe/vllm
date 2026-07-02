@@ -35,6 +35,8 @@ Examples:
 """
 
 import gc
+import hashlib
+import json
 import time
 
 from vllm import LLM, SamplingParams
@@ -135,6 +137,18 @@ def parse_args():
         help="Skip the vanilla-AR baseline (report only EVICT-vs-baseline ratio).",
     )
     parser.add_argument("--print-output", action="store_true")
+    parser.add_argument(
+        "--save-json",
+        type=str,
+        default=None,
+        help="Path to write the results JSON. "
+        "Default: evict_results_<timestamp>.json in the cwd.",
+    )
+    parser.add_argument(
+        "--no-save",
+        action="store_true",
+        help="Do not write a results JSON.",
+    )
     return parser.parse_args()
 
 
@@ -397,6 +411,42 @@ def print_report(results: list[dict], num_spec_tokens: int) -> None:
             print(f"  WARNING: {mism} prompt(s) differ - EVICT must be lossless!")
 
 
+def _jsonable(result: dict) -> dict:
+    """Drop the bulky raw texts, keep a digest plus every numeric metric."""
+    out = {k: v for k, v in result.items() if k != "texts"}
+    joined = "\x00".join(result.get("texts", []))
+    out["text_sha256"] = hashlib.sha256(joined.encode()).hexdigest()
+    return out
+
+
+def save_results(results: list[dict], args, path: str) -> None:
+    """Write config + per-config metrics + speedups to JSON for later diffing."""
+    by_name = {r["name"]: r for r in results}
+    ar = by_name.get("vanilla_ar")
+    base = by_name.get("spec_baseline")
+    evict = by_name.get("spec_evict")
+
+    speedups: dict = {}
+    if ar and base:
+        speedups["spec_baseline_vs_ar"] = base["throughput"] / ar["throughput"]
+    if ar and evict:
+        speedups["spec_evict_vs_ar"] = evict["throughput"] / ar["throughput"]
+    if base and evict:
+        speedups["evict_vs_baseline"] = evict["throughput"] / base["throughput"]
+
+    lossless = base["texts"] == evict["texts"] if base and evict else None
+    payload = {
+        "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"),
+        "config": vars(args),
+        "configs": {r["name"]: _jsonable(r) for r in results},
+        "speedups": speedups,
+        "lossless": lossless,
+    }
+    with open(path, "w") as f:
+        json.dump(payload, f, indent=2, default=str)
+    print(f"\nsaved results to {path}")
+
+
 def main(args) -> None:
     prompts = (PROMPTS * (args.num_prompts // len(PROMPTS) + 1))[: args.num_prompts]
     sp = SamplingParams(temperature=0.0, max_tokens=args.output_len)
@@ -423,6 +473,10 @@ def main(args) -> None:
         )
     )
     print_report(results, args.num_spec_tokens)
+
+    if not args.no_save:
+        path = args.save_json or f"evict_results_{time.strftime('%Y%m%d_%H%M%S')}.json"
+        save_results(results, args, path)
 
 
 if __name__ == "__main__":

@@ -45,6 +45,10 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
 PYTHON="${PYTHON:-${REPO_ROOT}/.venv/bin/python}"
 COST_TABLE="${COST_TABLE:-${REPO_ROOT}/evict_cost_table.json}"
+# Results JSON, saved for later comparison. Config-derived name so runs with a
+# different method/K do not clobber each other (same config overwrites).
+_MODEL_TAG="$(basename "${MODEL}")"
+RESULTS_JSON="${RESULTS_JSON:-${REPO_ROOT}/evict_results_${_MODEL_TAG}_${METHOD}_K${K}.json}"
 
 if [[ ! -x "${PYTHON}" ]]; then
   echo "ERROR: Python interpreter not found at ${PYTHON}." >&2
@@ -58,6 +62,7 @@ echo "   target model : ${MODEL}"
 echo "   eagle head   : ${EAGLE_DIR} (${METHOD})"
 echo "   K            : ${K}"
 echo "   cost table   : ${COST_TABLE}"
+echo "   results json : ${RESULTS_JSON}"
 echo "   python       : ${PYTHON}"
 echo "=============================================================="
 
@@ -99,6 +104,7 @@ COMPARE_ARGS=(
   --evict-cost-table "${COST_TABLE}"
   --evict-min-k "${EVICT_MIN_K}"
   --evict-batch-reduce "${EVICT_BATCH_REDUCE}"
+  --save-json "${RESULTS_JSON}"
 )
 [[ "${ENABLE_ROUTED_EXPERTS}" == "1" ]] && COMPARE_ARGS+=(--enable-return-routed-experts)
 [[ "${WITH_AR_BASELINE}" != "1" ]] && COMPARE_ARGS+=(--skip-ar)
@@ -106,4 +112,4 @@ COMPARE_ARGS=(
 echo ">>> phase 2: running EVICT-vs-baseline comparison ..."
 "${PYTHON}" examples/features/speculative_decoding/evict_vs_baseline.py "${COMPARE_ARGS[@]}"
 
-echo ">>> done."
+echo ">>> done. results saved to ${RESULTS_JSON}"
