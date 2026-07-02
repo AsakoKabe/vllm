@@ -28,9 +28,12 @@ Requires a GPU. Both spec configs use ``draft_sample_method='probabilistic'``
 (required by EVICT) so the only difference is ``evict_enabled``.
 
 Examples:
-    # Exercise EVICT (temperature > 0, B=1) — the truncation actually fires
+    # Exercise EVICT (temperature > 0, B=1) — the truncation actually fires.
+    # --cache reuses vanilla_ar + spec_baseline across runs so iterating on
+    # EVICT only re-runs spec_evict.
     python examples/features/speculative_decoding/evict_vs_baseline.py \
-        --method eagle3 --num-spec-tokens 4 --temperature 0.7 --max-num-seqs 1
+        --method eagle3 --num-spec-tokens 4 --temperature 0.7 --max-num-seqs 1 \
+        --cache evict_cache.json
 
     # EAGLE-3 on Llama-3.1-8B (dense; quick smoke test)
     python examples/features/speculative_decoding/evict_vs_baseline.py \
@@ -46,6 +49,7 @@ Examples:
 import gc
 import hashlib
 import json
+import os
 import time
 
 from vllm import LLM, SamplingParams
@@ -173,6 +177,14 @@ def parse_args():
         "--no-save",
         action="store_true",
         help="Do not write a results JSON.",
+    )
+    parser.add_argument(
+        "--cache",
+        type=str,
+        default=None,
+        help="Path to a prediction cache. When set, vanilla_ar and spec_baseline "
+        "(which do not depend on EVICT) are reused from it if the run signature "
+        "matches, so only spec_evict re-runs. The cache is (re)written each run.",
     )
     return parser.parse_args()
 
@@ -486,24 +498,75 @@ def save_results(results: list[dict], args, path: str) -> None:
     print(f"\nsaved results to {path}")
 
 
+# Configs whose predictions do not depend on EVICT knobs -> cacheable so that
+# only spec_evict re-runs while iterating on EVICT.
+_CACHEABLE = ("vanilla_ar", "spec_baseline")
+
+
+def _cache_signature(args) -> dict:
+    """Run parameters that affect the cacheable configs' outputs."""
+    keys = (
+        "model",
+        "method",
+        "eagle_dir",
+        "num_spec_tokens",
+        "num_prompts",
+        "output_len",
+        "temperature",
+        "seed",
+        "max_num_seqs",
+        "tp",
+        "max_model_len",
+    )
+    return {k: getattr(args, k) for k in keys}
+
+
+def load_cache(path: str | None, signature: dict) -> dict:
+    """Return cached cacheable-config results whose signature matches, else {}."""
+    if not path or not os.path.exists(path):
+        return {}
+    try:
+        with open(path) as f:
+            data = json.load(f)
+    except (OSError, json.JSONDecodeError):
+        return {}
+    if data.get("signature") != signature:
+        print(f"cache signature changed at {path}; re-running all configs.")
+        return {}
+    return {
+        name: r for name, r in data.get("results", {}).items() if name in _CACHEABLE
+    }
+
+
+def save_cache(path: str | None, signature: dict, results: list[dict]) -> None:
+    if not path:
+        return
+    keep = {r["name"]: r for r in results if r["name"] in _CACHEABLE}
+    with open(path, "w") as f:
+        json.dump({"signature": signature, "results": keep}, f)
+    print(f"prediction cache written to {path}")
+
+
 def main(args) -> None:
     prompts = (PROMPTS * (args.num_prompts // len(PROMPTS) + 1))[: args.num_prompts]
     sp = SamplingParams(
         temperature=args.temperature, seed=args.seed, max_tokens=args.output_len
     )
 
+    signature = _cache_signature(args)
+    cached = load_cache(args.cache, signature)
+
+    def get(name: str, spec_config: dict | None) -> dict:
+        if name in cached:
+            print(f"\n===== {name}: reused from cache ({args.cache}) =====")
+            return cached[name]
+        return run_config(args, name, spec_config, prompts, sp)
+
     results = []
     if not args.skip_ar:
-        results.append(run_config(args, "vanilla_ar", None, prompts, sp))
-    results.append(
-        run_config(
-            args,
-            "spec_baseline",
-            build_speculative_config(args, evict_enabled=False),
-            prompts,
-            sp,
-        )
-    )
+        results.append(get("vanilla_ar", None))
+    results.append(get("spec_baseline", build_speculative_config(args, False)))
+    # spec_evict always re-runs: it is the config being iterated on.
     results.append(
         run_config(
             args,
@@ -520,6 +583,7 @@ def main(args) -> None:
     if not args.no_save:
         path = args.save_json or f"evict_results_{time.strftime('%Y%m%d_%H%M%S')}.json"
         save_results(results, args, path)
+    save_cache(args.cache, signature, results)
 
 
 if __name__ == "__main__":
