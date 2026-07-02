@@ -335,6 +335,11 @@ def run_config(args, name: str, spec_config: dict | None, prompts, sp) -> dict:
     if spec_config is not None:
         llm_kwargs["speculative_config"] = spec_config
         llm_kwargs["spec_decode_timing"] = True
+        # EVICT truncation runs only under SYNCHRONOUS scheduling. vLLM enables
+        # async spec-decode scheduling by default for EAGLE, which sets
+        # _evict_active=False and makes EVICT a silent no-op. Force sync for both
+        # spec configs so EVICT actually fires and baseline is a fair comparison.
+        llm_kwargs["async_scheduling"] = False
         if args.enable_return_routed_experts:
             llm_kwargs["enable_return_routed_experts"] = True
     llm = LLM(**llm_kwargs)
