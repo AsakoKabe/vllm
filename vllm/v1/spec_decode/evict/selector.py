@@ -50,9 +50,10 @@ def expected_accepted_length(
 ) -> torch.Tensor:
     """Estimated accepted length ``E[A(m)]`` for each prefix length ``m``.
 
-    ``score[b, k] = prod_{j<=k} q[b, j]`` (cumulative product along the chain) is
-    the estimated probability that the chain is accepted through position ``k``.
-    ``E[A(m)] = sum_{j<m} score[b, j]`` is its prefix sum.
+    ``score[b, k] = prod_{j=0}^{k} q[b, j]`` (cumulative product along the chain)
+    is the estimated probability that the chain is accepted through position
+    ``k``. ``E[A(m)] = sum_{j=0}^{m-1} score[b, j]`` (the sum of the first ``m``
+    cumulative products) is its prefix sum, i.e. ``ehat[b, m-1]``.
 
     Args:
         confidence: ``q`` of shape ``[B, K]`` in ``[0, 1]``.

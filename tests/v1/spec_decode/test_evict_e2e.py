@@ -54,15 +54,18 @@ def _make_llm(evict_enabled: bool, draft_sample_method: str = "probabilistic") -
 
 @pytest.mark.skip(reason="GPU + model access required; run manually in a GPU env.")
 def test_evict_under_greedy_is_a_safe_noop():
-    # Under greedy, draft probs are not exposed so EVICT is inactive; enabling
-    # it must not change the (deterministic) output.
+    # All requests greedy (temperature=0): EVICT must be inactive (it never
+    # truncates greedy chains, whose draft "confidence" is unrelated to the
+    # deterministic acceptance), so the output is identical to EVICT off.
+    # draft_sample_method stays "probabilistic" (greedy draft is fail-closed at
+    # config time); the request-level temperature=0 triggers the no-op path.
     sampling = SamplingParams(temperature=0.0, max_tokens=96)
 
-    baseline = _make_llm(evict_enabled=False, draft_sample_method="greedy")
+    baseline = _make_llm(evict_enabled=False)
     base_out = [o.outputs[0].token_ids for o in baseline.generate(PROMPTS, sampling)]
     del baseline
 
-    evict = _make_llm(evict_enabled=True, draft_sample_method="greedy")
+    evict = _make_llm(evict_enabled=True)
     evict_out = [o.outputs[0].token_ids for o in evict.generate(PROMPTS, sampling)]
     del evict
 

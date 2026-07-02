@@ -47,10 +47,16 @@ so EVICT saves only **target-forward + verify** cost, not draft cost. Therefore
 C(m) ≈ target_forward(m) + verify(m)
 ```
 
-profiled offline. This branch's stage timer already tags each step with
-`num_verified_positions` (`= Σ K_i + B`) alongside `target_forward_ms` / `verify_ms`
-(`vllm/v1/spec_decode/timing.py`), so `C(m)` is built by binning those pairs by `m`.
-See `vllm/v1/spec_decode/evict/build_cost_table.py`.
+profiled offline. `build_cost_table.py` measures `C(m)` directly: for each
+`m = 1..max_spec_tokens` it runs one **`max_num_seqs=1` (B=1)** session with
+`num_speculative_tokens = m` fixed and averages the exported `target_forward_ms`
++ `verify_ms` over that run's timed steps (via `vllm/v1/spec_decode/timing.py`).
+B=1 makes each step verify exactly `m` positions, so the average is the
+per-request cost the selector assumes — not a batch-size average. (A future
+refinement is to bin a single mixed run by `num_verified_positions` instead of
+one run per `m`; that requires exporting `num_verified_positions` as a metric,
+which the timing branch does not yet do.) See
+`vllm/v1/spec_decode/evict/build_cost_table.py`.
 
 Only the *shape* of `C(m)` over `m` matters for `argmax`. As `m` grows, `Ê[A(m)]`
 grows sub-linearly (diminishing, since `score` shrinks) while `C(m)` grows roughly

@@ -98,6 +98,11 @@ def profile_cost(args, num_spec_tokens: int) -> float | None:
         speculative_config=_speculative_config(args, num_spec_tokens),
         disable_log_stats=False,
         spec_decode_timing=True,
+        # Force B=1 per step so the averaged target_forward+verify is the
+        # per-request cost of verifying `num_spec_tokens` positions — the cost
+        # the selector assumes — rather than an average over the varying batch
+        # sizes that continuous batching would otherwise produce.
+        max_num_seqs=1,
     )
     prompts = (PROMPTS * (args.num_prompts // len(PROMPTS) + 1))[: args.num_prompts]
     sampling_params = SamplingParams(temperature=0.0, max_tokens=args.output_len)

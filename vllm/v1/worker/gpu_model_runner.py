@@ -4888,7 +4888,7 @@ class GPUModelRunner(
         Runs after drafting (``_draft_token_ids`` / ``_draft_probs`` set) and
         before the draft tokens are shipped to the scheduler, so the next target
         forward verifies only m* positions. Lossless: only speculation depth is
-        reduced. No-op without exposed draft probabilities (e.g. greedy drafts).
+        reduced. No-op for any batch that contains a greedy request.
         """
         if not self._evict_active:
             return
@@ -4896,14 +4896,17 @@ class GPUModelRunner(
         probs = self._draft_probs
         if not torch.is_tensor(draft):
             return
-        if probs is None:
-            # Greedy batches don't expose draft probabilities, so EVICT cannot
-            # score them. Surface it once so an enabled-but-inactive EVICT is not
-            # silent (e.g. all requests at temperature=0).
+        # EVICT applies a batch-uniform truncation, so it must never shorten a
+        # greedy request's chain: a greedy row exposes either no draft
+        # probabilities (fully greedy batch, probs is None) or a fabricated
+        # temperature=1 softmax (mixed batch), neither of which reflects its
+        # deterministic acceptance. Skip the whole step if any request is greedy.
+        if probs is None or not self.input_batch.sampling_metadata.all_random:
             logger.warning_once(
-                "EVICT is enabled but draft probabilities are unavailable "
-                "(fully greedy batch); EVICT is inactive this step. Use "
-                "temperature > 0 to benefit from EVICT."
+                "EVICT is enabled but the batch contains greedy requests "
+                "(temperature=0); EVICT is inactive for such steps to avoid "
+                "truncating greedy draft chains. Use temperature > 0 for all "
+                "requests to benefit from EVICT."
             )
             return
         num_reqs, num_spec = draft.shape

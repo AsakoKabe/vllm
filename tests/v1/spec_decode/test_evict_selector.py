@@ -70,6 +70,17 @@ def test_select_kstar_validates_cost_shape():
         select_kstar(conf, torch.tensor([1.0, 2.0, 3.0]), min_k=1)
 
 
+def test_select_kstar_collapses_on_fabricated_low_confidence():
+    # A greedy request in a mixed batch gets a fabricated temperature=1 softmax
+    # confidence (~1/V for a large vocab), unrelated to its deterministic
+    # acceptance; select_kstar then collapses it to min_k. This is exactly why
+    # _apply_evict_truncation excludes any batch containing a greedy request
+    # (the all_random guard) — this test documents the input that guard protects.
+    conf = torch.full((1, 4), 2e-5)  # ~1/V confidences
+    cost = torch.tensor([1.0, 2.0, 3.0, 4.0])
+    assert select_kstar(conf, cost, min_k=1).tolist() == [1]
+
+
 def test_reduce_batch_kstar_policies():
     kstar = torch.tensor([2, 4, 3])
     assert reduce_batch_kstar(kstar, "max") == 4
