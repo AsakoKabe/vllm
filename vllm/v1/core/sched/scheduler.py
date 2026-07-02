@@ -1498,6 +1498,7 @@ class Scheduler(SchedulerInterface):
         num_nans_in_logits = model_runner_output.num_nans_in_logits
         kv_connector_output = model_runner_output.kv_connector_output
         cudagraph_stats = model_runner_output.cudagraph_stats
+        spec_decode_timing = model_runner_output.spec_decode_timing
 
         # Every GPU write enqueued by this and earlier steps has completed, so it is
         # safe to return deferred-free blocks to the pool.
@@ -1811,6 +1812,11 @@ class Scheduler(SchedulerInterface):
                         finished_requests=finished_set
                     )
             finished_req_ids.clear()
+
+        # Fold the worker's per-step stage timings (one-step lagged) into the
+        # spec-decoding stats once per step.
+        if spec_decode_timing is not None and spec_decoding_stats is not None:
+            spec_decoding_stats.observe_timing(spec_decode_timing)
 
         if (
             stats := self.make_stats(
