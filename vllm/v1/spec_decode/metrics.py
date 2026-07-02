@@ -244,15 +244,21 @@ class SpecDecodingLogging:
     def _log_target_by_positions(self, log_fn):
         """Log T_T(k) binned by verified positions, plus eta(K)=T_T(0)/T_T(K)."""
         pairs = [
-            (k, ms)
-            for k, ms in zip(self.num_verified_positions, self.target_forward_ms)
+            (k, ms, u)
+            for k, ms, u in zip(
+                self.num_verified_positions,
+                self.target_forward_ms,
+                self.avg_distinct_experts,
+            )
             if k >= 1
         ]
         if not pairs:
             return
         by_k: dict[int, list[float]] = {}
-        for k, ms in pairs:
+        experts_by_k: dict[int, list[float]] = {}
+        for k, ms, u in pairs:
             by_k.setdefault(k, []).append(ms)
+            experts_by_k.setdefault(k, []).append(u)
         means = {k: float(np.mean(v)) for k, v in by_k.items()}
         # Paper index: T_T(j) is the forward over j+1 positions, so bin[1]=T_T(0).
         bins_str = ", ".join(
@@ -272,6 +278,16 @@ class SpecDecodingLogging:
             k_max - 1,
             eta,
         )
+        expert_means = {k: float(np.mean(v)) for k, v in experts_by_k.items()}
+        if any(u > 0.0 for u in expert_means.values()):
+            experts_str = ", ".join(
+                f"{k - 1}:{expert_means[k]:.1f}" for k in sorted(expert_means)
+            )
+            log_fn(
+                "SpecDecoding U_r by positions (mean distinct experts, paper K "
+                "index): [%s]",
+                experts_str,
+            )
 
     def _log_evict(self, log_fn):
         """Log EVICT truncation: mean m*, saved verify positions, saved %."""
@@ -457,6 +473,12 @@ class SpecDecodingProm:
         self.counter_spec_decode_target_forward_count_by_positions: dict[
             int, list[prometheus_client.Counter]
         ] = {}
+        # U_r (x1000) binned the same way; mean U_r(k-1) = value[k] / 1000 /
+        # count[k], aligning U_r with T_T per position count for the paper's
+        # "U_r grows with K" claim.
+        self.counter_spec_decode_distinct_experts_by_positions: dict[
+            int, list[prometheus_client.Counter]
+        ] = {}
 
         # EVICT truncation metrics — independent of --spec-decode-timing; on
         # whenever EVICT is enabled. mean m* = evict_kstar_sum / evict_steps.
@@ -609,6 +631,23 @@ class SpecDecodingProm:
                 ]
                 for idx, lv in per_engine_labelvalues.items()
             }
+            base_experts_by_pos = self._counter_cls(
+                name="vllm:spec_decode_distinct_experts_milli_by_positions",
+                documentation=(
+                    "Layer-averaged distinct experts (U_r) x1000, summed over "
+                    "steps that verified exactly 'position' positions; mean "
+                    "U_r at k positions = value[k] / 1000 / "
+                    "target_forward_count_by_positions[k]."
+                ),
+                labelnames=pos_labelnames,
+            )
+            self.counter_spec_decode_distinct_experts_by_positions = {
+                idx: [
+                    base_experts_by_pos.labels(*lv, str(k))
+                    for k in range(num_position_bins)
+                ]
+                for idx, lv in per_engine_labelvalues.items()
+            }
 
     def observe(self, spec_decoding_stats: SpecDecodingStats, engine_idx: int = 0):
         if not self.spec_decoding_enabled:
@@ -673,6 +712,13 @@ class SpecDecodingProm:
         if 1 <= k < len(us_bins):
             us_bins[k].inc(_ms_to_us(spec_decoding_stats.target_forward_ms))
             count_bins[k].inc(1)
+            experts_bins = self.counter_spec_decode_distinct_experts_by_positions.get(
+                engine_idx, []
+            )
+            if k < len(experts_bins):
+                experts_bins[k].inc(
+                    int(round(spec_decoding_stats.avg_distinct_experts * 1000))
+                )
 
 
 def _ms_to_us(ms: float) -> int:

@@ -52,7 +52,10 @@ FORCE_REBUILD="${FORCE_REBUILD:-0}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
 PYTHON="${PYTHON:-${REPO_ROOT}/.venv/bin/python}"
-COST_TABLE="${COST_TABLE:-${REPO_ROOT}/evict_cost_table.json}"
+# Config-derived name so a table profiled for another model/method/K is never
+# silently reused (the engine also fail-closes on model/method mismatch).
+_MODEL_TAG_EARLY="$(basename "${MODEL}")"
+COST_TABLE="${COST_TABLE:-${REPO_ROOT}/evict_cost_table_${_MODEL_TAG_EARLY}_${METHOD}_K${K}.json}"
 # Results JSON, saved for later comparison. Config-derived name so runs with a
 # different method/K do not clobber each other (same config overwrites).
 _MODEL_TAG="$(basename "${MODEL}")"

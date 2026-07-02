@@ -1174,6 +1174,18 @@ class SpeculativeConfig:
                     f"{covered} but num_speculative_tokens="
                     f"{self.num_speculative_tokens}; profile a deeper table."
                 )
+            # Fail closed on a table profiled for a different model/method: a
+            # stale table with sufficient coverage would otherwise be silently
+            # reused, distorting every m* selection.
+            table.validate_source(
+                expected_model=(
+                    self.target_model_config.model
+                    if self.target_model_config is not None
+                    else None
+                ),
+                expected_method=self.method,
+                source=str(self.evict_cost_table_path),
+            )
 
     def verify_equal_vocab_size_if_draft_model(self):
         if (

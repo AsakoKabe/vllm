@@ -76,3 +76,49 @@ def test_as_tensor_rejects_beyond_profiled(tmp_path):
 def test_affine_as_tensor_any_depth():
     table = CostTable.affine(intercept=2.0, per_token=1.0)
     assert torch.allclose(table.as_tensor(4), torch.tensor([3.0, 4.0, 5.0, 6.0]))
+
+
+def test_from_file_records_provenance(tmp_path):
+    p = tmp_path / "table.json"
+    p.write_text(
+        json.dumps(
+            {
+                "unit": "ms",
+                "model": "org/model-a",
+                "method": "eagle3",
+                "costs": {"1": 1.0, "2": 2.0},
+            }
+        )
+    )
+    table = CostTable.from_file(p)
+    assert table.source_model == "org/model-a"
+    assert table.source_method == "eagle3"
+
+
+def test_from_file_flat_mapping_has_no_provenance(tmp_path):
+    p = tmp_path / "table.json"
+    p.write_text(json.dumps({"1": 1.0}))
+    table = CostTable.from_file(p)
+    assert table.source_model is None
+    assert table.source_method is None
+
+
+def test_validate_source_accepts_match_and_missing_provenance():
+    table = CostTable(
+        costs={1: 1.0}, source_model="org/model-a", source_method="eagle3"
+    )
+    table.validate_source("org/model-a", "eagle3")
+    # No provenance (hand-written table) -> accepted against anything.
+    CostTable(costs={1: 1.0}).validate_source("org/other", "mtp")
+    # Unknown deployment side -> accepted.
+    table.validate_source(None, None)
+
+
+def test_validate_source_fails_closed_on_mismatch():
+    table = CostTable(
+        costs={1: 1.0}, source_model="org/model-a", source_method="eagle3"
+    )
+    with pytest.raises(ValueError, match="profiled for model"):
+        table.validate_source("org/model-b", "eagle3")
+    with pytest.raises(ValueError, match="profiled with method"):
+        table.validate_source("org/model-a", "mtp")

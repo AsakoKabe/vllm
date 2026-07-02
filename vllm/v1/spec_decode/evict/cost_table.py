@@ -32,7 +32,13 @@ class CostTable:
         *,
         intercept: float | None = None,
         per_token: float | None = None,
+        source_model: str | None = None,
+        source_method: str | None = None,
     ) -> None:
+        # Provenance recorded by the profiler (None for affine/hand-written
+        # tables); checked against the deployed config via validate_source().
+        self.source_model = source_model
+        self.source_method = source_method
         if costs is not None:
             self._validate_costs(costs)
             self._costs: dict[int, float] | None = dict(costs)
@@ -83,7 +89,13 @@ class CostTable:
         except json.JSONDecodeError as exc:
             raise ValueError(f"EVICT cost table {p} is not valid JSON: {exc}") from exc
 
+        source_model: str | None = None
+        source_method: str | None = None
         if isinstance(raw, Mapping) and "costs" in raw:
+            model = raw.get("model")
+            method = raw.get("method")
+            source_model = model if isinstance(model, str) else None
+            source_method = method if isinstance(method, str) else None
             raw = raw["costs"]
         if not isinstance(raw, Mapping):
             raise ValueError(
@@ -101,7 +113,42 @@ class CostTable:
             costs[m] = float(value)
 
         cls._validate_costs(costs, source=str(p))
-        return cls(costs=costs)
+        return cls(costs=costs, source_model=source_model, source_method=source_method)
+
+    def validate_source(
+        self,
+        expected_model: str | None,
+        expected_method: str | None,
+        source: str = "<cost table>",
+    ) -> None:
+        """Fail closed if the table was profiled for a different model/method.
+
+        A stale table is otherwise silently reused whenever its coverage
+        suffices, corrupting every U(m) = E[A(m)] / C(m) selection with costs
+        from the wrong deployment. Tables without provenance (hand-written or
+        pre-provenance) are accepted as-is.
+        """
+        if (
+            self.source_model is not None
+            and expected_model is not None
+            and self.source_model != expected_model
+        ):
+            raise ValueError(
+                f"EVICT cost table {source} was profiled for model "
+                f"{self.source_model!r} but the engine is running "
+                f"{expected_model!r}; re-profile the table (or edit its "
+                "'model' field if the reuse is intentional)."
+            )
+        if (
+            self.source_method is not None
+            and expected_method is not None
+            and self.source_method != expected_method
+        ):
+            raise ValueError(
+                f"EVICT cost table {source} was profiled with method "
+                f"{self.source_method!r} but the engine uses "
+                f"{expected_method!r}; re-profile the table."
+            )
 
     @staticmethod
     def _validate_costs(costs: Mapping[int, float], source: str = "<inline>") -> None:

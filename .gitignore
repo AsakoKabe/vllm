@@ -258,3 +258,4 @@ csrc/cpu/cpu_attn_dispatch_generated.h
 # EVICT / spec-decode example-script artifacts (regenerated each run)
 evict_results_*.json
 evict_cache_*.json
+evict_cost_table_*.json

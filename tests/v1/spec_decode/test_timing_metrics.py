@@ -127,6 +127,36 @@ def test_logging_target_by_positions_eta():
     assert "eta(2): 0.250" in line
 
 
+def test_logging_experts_by_positions_line():
+    logging = SpecDecodingLogging()
+    for k, u in ((1, 12.0), (3, 30.0), (3, 34.0)):
+        stats = SpecDecodingStats.new(num_spec_tokens=2)
+        stats.observe_draft(num_draft_tokens=2, num_accepted_tokens=1)
+        timing = _timing(target=1.0, num_verified_positions=k)
+        timing.avg_distinct_experts = u
+        stats.observe_timing(timing)
+        logging.observe(stats)
+
+    messages: list[str] = []
+    logging.log(log_fn=_collect(messages))
+    line = next(m for m in messages if "U_r by positions" in m)
+    # Paper K index: bin k=1 -> "0", bin k=3 -> "2"; mean of 30/34 = 32.
+    assert "0:12.0" in line
+    assert "2:32.0" in line
+
+
+def test_logging_experts_by_positions_skipped_for_dense():
+    # All-zero U_r (dense target / capture off) must not emit the line.
+    logging = SpecDecodingLogging()
+    stats = SpecDecodingStats.new(num_spec_tokens=2)
+    stats.observe_draft(num_draft_tokens=2, num_accepted_tokens=1)
+    stats.observe_timing(_timing(target=1.0, num_verified_positions=3))
+    logging.observe(stats)
+    messages: list[str] = []
+    logging.log(log_fn=_collect(messages))
+    assert not any("U_r by positions" in m for m in messages)
+
+
 def test_logging_target_by_positions_excludes_prefill():
     # A k=0 (prefill/non-spec) step must not appear in the by-positions line.
     logging = SpecDecodingLogging()

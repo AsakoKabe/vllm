@@ -23,6 +23,7 @@ Example (the paper's MoE setup)::
         --out qwen3_30b_a3b_evict_cost.json
 """
 
+import gc
 import json
 
 from vllm import LLM, SamplingParams
@@ -48,8 +49,8 @@ VERIFY_US = "vllm:spec_decode_verify_microseconds"
 NUM_STEPS = "vllm:spec_decode_num_timed_steps"
 
 
-def _mean_verify_cost_ms(metrics: list[Metric]) -> float | None:
-    """Mean per-step ``target_forward + verify`` latency (ms)."""
+def _snapshot(metrics: list[Metric]) -> tuple[int, int]:
+    """Cumulative (target_forward + verify) microseconds and timed steps."""
     total_us = 0
     num_steps = 0
     for metric in metrics:
@@ -59,7 +60,16 @@ def _mean_verify_cost_ms(metrics: list[Metric]) -> float | None:
         elif metric.name == NUM_STEPS:
             assert isinstance(metric, Counter)
             num_steps += metric.value
-    if num_steps == 0:
+    return total_us, num_steps
+
+
+def _mean_verify_cost_ms(
+    before: tuple[int, int], after: tuple[int, int]
+) -> float | None:
+    """Mean per-step ``target_forward + verify`` latency (ms) over the diff."""
+    total_us = after[0] - before[0]
+    num_steps = after[1] - before[1]
+    if num_steps <= 0:
         return None
     return total_us / num_steps / 1000.0
 
@@ -106,9 +116,22 @@ def profile_cost(args, num_spec_tokens: int) -> float | None:
     )
     prompts = (PROMPTS * (args.num_prompts // len(PROMPTS) + 1))[: args.num_prompts]
     sampling_params = SamplingParams(temperature=0.0, max_tokens=args.output_len)
+    # Warm up (Triton JIT, CUDA-graph capture side effects, MoE ramp) before
+    # snapshotting, so C(m) reflects steady state. Without this the early m
+    # runs absorb one-time costs and the table comes out non-monotonic, which
+    # distorts m* selection (utility argmax over E[A(m)]/C(m)).
+    llm.generate(prompts[: min(2, len(prompts))], sampling_params=sampling_params)
+    before = _snapshot(llm.get_metrics())
     llm.generate(prompts, sampling_params=sampling_params)
-    cost = _mean_verify_cost_ms(llm.get_metrics())
+    cost = _mean_verify_cost_ms(before, _snapshot(llm.get_metrics()))
     del llm
+    gc.collect()
+    try:
+        import torch
+
+        torch.cuda.empty_cache()
+    except Exception:
+        pass
     return cost
 
 
@@ -142,6 +165,22 @@ def main(args) -> None:
             )
         costs[str(m)] = cost
         logger.info("C(%d) = %.4f ms", m, cost)
+
+    # C(m) should be non-decreasing in m (more verified positions never cost
+    # less). Inversions distort m* selection: any m whose C exceeds a deeper
+    # length is strictly dominated and never chosen.
+    inversions = [
+        (m, m + 1)
+        for m in range(1, args.max_spec_tokens)
+        if costs[str(m)] > costs[str(m + 1)]
+    ]
+    if inversions:
+        logger.warning(
+            "Cost table is non-monotonic at %s — likely residual warmup or "
+            "measurement noise. Consider more prompts/longer output-len or "
+            "re-running.",
+            inversions,
+        )
 
     payload = {"unit": "ms", "model": args.model, "method": args.method, "costs": costs}
     with open(args.out, "w") as f:

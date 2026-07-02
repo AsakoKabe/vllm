@@ -78,6 +78,7 @@ NUM_STEPS_METRIC = "vllm:spec_decode_num_timed_steps"
 PER_POS_METRIC = "vllm:spec_decode_draft_forward_microseconds_per_pos"
 TF_US_BY_POS_METRIC = "vllm:spec_decode_target_forward_microseconds_by_positions"
 TF_COUNT_BY_POS_METRIC = "vllm:spec_decode_target_forward_count_by_positions"
+EXPERTS_BY_POS_METRIC = "vllm:spec_decode_distinct_experts_milli_by_positions"
 DISTINCT_EXPERTS_METRIC = "vllm:spec_decode_distinct_experts_milli"
 NUM_DRAFTS_METRIC = "vllm:spec_decode_num_drafts"
 NUM_DRAFT_TOKENS_METRIC = "vllm:spec_decode_num_draft_tokens"
@@ -105,6 +106,7 @@ _VECTOR_NAMES = frozenset(
         PER_POS_METRIC,
         TF_US_BY_POS_METRIC,
         TF_COUNT_BY_POS_METRIC,
+        EXPERTS_BY_POS_METRIC,
         EVICT_HIST_METRIC,
     }
 )
@@ -306,6 +308,21 @@ def derive(after: dict, before: dict, num_spec_tokens: int) -> dict:
     out["t_t_dom_ms"] = t_t(dom_k) if dom_k else None
     out["t_t_full_ms"] = t_t(num_spec_tokens + 1)  # T_T(K), full-chain forward
 
+    # U_r binned the same way: mean distinct experts at k verified positions.
+    experts_by = _diff_vector(after, before, EXPERTS_BY_POS_METRIC)
+
+    def u_r(positions: int) -> float | None:
+        if (
+            positions < len(cnt_by)
+            and cnt_by[positions] > 0
+            and positions < len(experts_by)
+        ):
+            return experts_by[positions] / cnt_by[positions] / 1000.0
+        return None
+
+    out["u_r_dom"] = u_r(dom_k) if dom_k else None
+    out["u_r_full"] = u_r(num_spec_tokens + 1)
+
     # Analytical speedup vs AR from the decomposition (needs a T_T(0) sample):
     #   SpeedUp = E[A] * T_T(0) / (K * T_D(1) + T_T(dom) + T_reject)
     # using the realized draft-forward T_D(1) = mean per-position draft.
@@ -437,6 +454,8 @@ def print_report(
         ("verify T_reject (ms)", "verify_ms", "8.3f"),
         ("sample (ms)", "sample_ms", "8.3f"),
         ("U_r (distinct experts)", "avg_distinct_experts", "8.3f"),
+        ("U_r @ dominant k", "u_r_dom", "8.3f"),
+        ("U_r @ full K+1", "u_r_full", "8.3f"),
         ("T_T(0) (ms)", "t_t0_ms", "8.3f"),
         ("T_T(K) (ms)", "t_t_full_ms", "8.3f"),
         ("analytical speedup", "analytical_speedup", "8.3f"),

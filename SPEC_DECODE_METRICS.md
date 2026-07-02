@@ -21,6 +21,7 @@
 | `…distinct_experts_milli` | $\bar U_r$ ×1000, суммарно по шагам; mean $\bar U_r$ = value/1000/num_timed_steps. Только MoE-таргет; требует `--enable-return-routed-experts`. | $\bar U_r$ | `gpu_model_runner.py:4655` → `metrics.py:397` |
 | `…target_forward_microseconds_by_positions` | `target_forward`, суммированный по шагам, верифицировавшим ровно $k$ позиций (индекс = $k$). `Vector`. **Чистый источник $T_T$** (в отличие от скаляра — без prefill). | $\sum T_T$ для $k$ поз. | `metrics.py` observe → `reader.py` |
 | `…target_forward_count_by_positions` | Число шагов с ровно $k$ верифиц. позициями (знаменатель для предыдущей). `Vector`. | $\#$ шагов | `metrics.py` observe → `reader.py` |
+| `…distinct_experts_milli_by_positions` | $\bar U_r$ ×1000, суммарно по шагам с ровно $k$ позициями (индекс = $k$); mean $\bar U_r(k{-}1)$ = value[k]/1000/count[k]. Выравнивает $\bar U_r$ с $T_T(k)$ — к тезису «$\bar U_r$ растёт с $K$». `Vector`. | $\sum\bar U_r$ для $k$ поз. | `metrics.py` observe → `reader.py` |
 
 **`target_forward` ≠ `verify`:** `target_forward` ($T_T(K)$) — прогон target-**модели** (тяжёлый compute); `verify` ($T_{\text{reject}}$) — **алгоритм** accept/reject поверх готовых логитов (дёшево). `sample`/`verify` взаимоисключающие.
 
