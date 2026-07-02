@@ -26,6 +26,7 @@ def _timing(
     sample: float = 0.25,
     draft: float = 2.0,
     per_pos: list[float] | None = None,
+    num_verified_positions: int = 0,
 ) -> SpecDecodeTimingStats:
     return SpecDecodeTimingStats(
         target_forward_ms=target,
@@ -33,6 +34,7 @@ def _timing(
         sample_ms=sample,
         draft_total_ms=draft,
         draft_forward_ms_per_pos=[0.7, 0.6] if per_pos is None else per_pos,
+        num_verified_positions=num_verified_positions,
     )
 
 
@@ -57,6 +59,13 @@ def test_observe_timing_sets_fields():
     assert stats.sample_ms == 0.25
     assert stats.draft_total_ms == 2.0
     assert stats.draft_forward_ms_per_pos == [0.7, 0.6, 0.5]
+
+
+def test_observe_timing_copies_num_verified_positions():
+    stats = SpecDecodingStats.new(num_spec_tokens=3)
+    assert stats.num_verified_positions == 0
+    stats.observe_timing(_timing(num_verified_positions=4))
+    assert stats.num_verified_positions == 4
 
 
 def test_observe_timing_copies_per_pos_list():
@@ -87,6 +96,48 @@ def test_logging_aggregates_timing():
     assert any("SpecDecoding timing" in m for m in messages)
     # log() resets accumulators.
     assert logging.target_forward_ms == []
+
+
+def test_logging_target_by_positions_eta():
+    # num_spec_tokens=2 -> a full-draft step verifies K+1=3 positions.
+    logging = SpecDecodingLogging()
+    for _ in range(2):
+        stats = SpecDecodingStats.new(num_spec_tokens=2)
+        stats.observe_draft(num_draft_tokens=0, num_accepted_tokens=0)
+        # k=1 verified position is the K=0 (single-token) forward -> T_T(0).
+        stats.observe_timing(_timing(target=1.0, num_verified_positions=1))
+        logging.observe(stats)
+    for _ in range(2):
+        stats = SpecDecodingStats.new(num_spec_tokens=2)
+        stats.observe_draft(num_draft_tokens=2, num_accepted_tokens=1)
+        # k=3 verified positions -> T_T(2), the full-speculation forward.
+        stats.observe_timing(_timing(target=4.0, num_verified_positions=3))
+        logging.observe(stats)
+
+    messages: list[str] = []
+    logging.log(log_fn=_collect(messages))
+    line = next(m for m in messages if "T_T by positions" in m)
+    # Paper K index: bin[1] -> "0:", bin[3] -> "2:".
+    assert "0:1.000(2)" in line
+    assert "2:4.000(2)" in line
+    assert "T_T(0): 1.000" in line
+    assert "T_T(2): 4.000" in line
+    # eta(2) = T_T(0) / T_T(2) = 1.0 / 4.0.
+    assert "eta(2): 0.250" in line
+
+
+def test_logging_target_by_positions_excludes_prefill():
+    # A k=0 (prefill/non-spec) step must not appear in the by-positions line.
+    logging = SpecDecodingLogging()
+    stats = SpecDecodingStats.new(num_spec_tokens=2)
+    stats.observe_draft(num_draft_tokens=2, num_accepted_tokens=1)
+    stats.observe_timing(_timing(target=9.0, num_verified_positions=0))
+    logging.observe(stats)
+
+    messages: list[str] = []
+    logging.log(log_fn=_collect(messages))
+    # No verified-position pairs -> the by-positions line is suppressed.
+    assert not any("T_T by positions" in m for m in messages)
 
 
 def test_mean_per_pos_handles_variable_k():

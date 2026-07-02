@@ -19,8 +19,12 @@
 | `…draft_forward_microseconds_per_pos` | Каждый из $K$ форвардов draft-модели отдельно (позиция $i$). `Vector`. | $T_D^{(B)}(1)$ | `llm_base_proposer.py:544,688` → `metrics.py:386` |
 | `…num_timed_steps` | Число спек. шагов с влитым таймингом — знаменатель для средних. | $R$ | `scheduler.py:1819` → `metrics.py:360` |
 | `…distinct_experts_milli` | $\bar U_r$ ×1000, суммарно по шагам; mean $\bar U_r$ = value/1000/num_timed_steps. Только MoE-таргет; требует `--enable-return-routed-experts`. | $\bar U_r$ | `gpu_model_runner.py:4655` → `metrics.py:397` |
+| `…target_forward_microseconds_by_positions` | `target_forward`, суммированный по шагам, верифицировавшим ровно $k$ позиций (индекс = $k$). `Vector`. **Чистый источник $T_T$** (в отличие от скаляра — без prefill). | $\sum T_T$ для $k$ поз. | `metrics.py` observe → `reader.py` |
+| `…target_forward_count_by_positions` | Число шагов с ровно $k$ верифиц. позициями (знаменатель для предыдущей). `Vector`. | $\#$ шагов | `metrics.py` observe → `reader.py` |
 
 **`target_forward` ≠ `verify`:** `target_forward` ($T_T(K)$) — прогон target-**модели** (тяжёлый compute); `verify` ($T_{\text{reject}}$) — **алгоритм** accept/reject поверх готовых логитов (дёшево). `sample`/`verify` взаимоисключающие.
+
+**$T_T(0)$, $\eta(K)$, $R_{DT}$ из бинов.** Пусть $k$ — число верифицированных позиций (= $K_{\text{draft}}{+}1$; при $B{=}1$ это $K{+}1$). Тогда $T_T(j)\,[\text{ms}] = \dfrac{\texttt{by\_positions}[j{+}1]}{\texttt{count}[j{+}1]\cdot 1000}$; отсюда $T_T(0)=\text{bin}[1]$, $T_T(K)=\text{bin}[K{+}1]$, $\eta(K)=\dfrac{T_T(0)}{T_T(K)}$, $R_{DT}=\dfrac{K\,T_D}{T_T(0)}$. Скаляр `…target_forward_microseconds` смешивает prefill-форварды ($k{=}0$) — для $T_T(k)$ бери бины. Prefill ($k{=}0$) и мульти-seq $B{>}1$ ($k>K{+}1$) в бины не пишутся. Лог-строка `SpecDecoding T_T by positions …` печатает $T_T(j)$ по бинам + $\eta(K)$ (индекс $j$ — в нотации статьи).
 
 ## 2. Формулы из статьи (LaTeX)
 
@@ -76,7 +80,7 @@ scheduler.py:1501 read ; :1819 observe_timing (1x/шаг)
 ## 6. Планируется (ещё НЕ реализовано)
 | Величина | Описание | Статус |
 |---|---|---|
-| $T_T(0)$ baseline | Target-forward на non-spec шагах; нужен для $\eta(K)$, $R_{DT}$. | Планируется |
+| $T_T(0)$ baseline, $\eta(K)$ | Из бинов `target_forward_*_by_positions` (bin[1]/bin[K+1]). | ✅ Реализовано |
 | $\alpha_k,\beta_k$ cost-model | Фит $T_{T,r}\approx\alpha\,\bar U_r+\beta$ по бинам $k$. | Tier 3 (оффлайн) |
 | $T_{SD}=T_{id}^{*}+\Delta_{\text{part}}+\Delta_{\text{rej}}$ | Bellman-DP + ideal-rerun. | Tier 3 (ждёт A1–A4) |
 

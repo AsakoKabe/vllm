@@ -15,6 +15,8 @@ _VECTOR_COUNTER_NAMES = frozenset(
     {
         "vllm:spec_decode_num_accepted_tokens_per_pos",
         "vllm:spec_decode_draft_forward_microseconds_per_pos",
+        "vllm:spec_decode_target_forward_microseconds_by_positions",
+        "vllm:spec_decode_target_forward_count_by_positions",
     }
 )
 
