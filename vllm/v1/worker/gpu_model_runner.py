@@ -646,6 +646,9 @@ class GPUModelRunner(
         self.use_async_spec_decode = (
             self.use_async_scheduling and self.num_spec_tokens > 0
         )
+        # Assigned before the EVICT block below, which reads it to derive the
+        # extra uniform-decode query lengths for quantized m*.
+        self.uniform_decode_query_len = 1 + self.num_spec_tokens
 
         # Atomic per-stage speculative-decode timing (off unless
         # --spec-decode-timing and speculative decoding are both enabled).
@@ -896,8 +899,6 @@ class GPUModelRunner(
             self.kv_sharing_fast_prefill_logits_indices = torch.zeros(
                 self.max_num_tokens, dtype=torch.int32, device=self.device
             )
-
-        self.uniform_decode_query_len = 1 + self.num_spec_tokens
 
         # Cudagraph dispatcher for runtime cudagraph dispatching.
         self.cudagraph_dispatcher = CudagraphDispatcher(self.vllm_config)

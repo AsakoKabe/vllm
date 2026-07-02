@@ -1106,6 +1106,11 @@ class SpeculativeConfig:
 
         if self.evict_enabled:
             self._verify_evict_args()
+        elif self.evict_allowed_kstar is not None:
+            raise ValueError(
+                "evict_allowed_kstar is only valid with evict_enabled=true; "
+                "it has no effect otherwise."
+            )
         return self
 
     def _verify_evict_args(self) -> None:

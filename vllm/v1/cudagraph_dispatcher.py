@@ -142,6 +142,7 @@ class CudagraphDispatcher:
         has_lora: bool,
         num_active_loras: int = 0,
         uniform_query_len: int | None = None,
+        allow_full: bool = True,
     ) -> BatchDescriptor:
         max_num_seqs = self.vllm_config.scheduler_config.max_num_seqs
         query_len = uniform_query_len or self.uniform_decode_query_len
@@ -149,16 +150,24 @@ class CudagraphDispatcher:
         if (
             uniform_decode
             and query_len != self.uniform_decode_query_len
+            and allow_full
             and self.cudagraph_mode.has_mode(CUDAGraphMode.FULL)
         ):
             # Extra uniform length class (EVICT quantized m*): pad into the
-            # per-length size list. No graph for this length/token count ->
-            # fall through to the non-uniform (piecewise) path below, which is
-            # today's behavior for truncated verifies.
+            # per-length size list. Extra-length graphs are FULL-only, so when
+            # FULL is disallowed for this call (allow_full=False: cascade
+            # attention / encoder output), or there is no graph for this
+            # length/token count, or the per-length padding would exceed the
+            # standard-grid padding (power-of-two request grid can overshoot),
+            # fall through to the non-uniform (piecewise) path below - today's
+            # behavior for truncated verifies.
             sizes = self._extra_uniform_sizes.get(query_len)
             if sizes:
                 idx = bisect.bisect_left(sizes, num_tokens)
-                if idx < len(sizes):
+                if (
+                    idx < len(sizes)
+                    and sizes[idx] <= self._bs_to_padded_graph_size[num_tokens]
+                ):
                     num_tokens_padded = sizes[idx]
                     num_reqs = num_tokens_padded // query_len
                     assert num_tokens_padded % query_len == 0
@@ -382,6 +391,7 @@ class CudagraphDispatcher:
             has_lora,
             effective_num_active_loras,
             uniform_query_len=uniform_query_len,
+            allow_full=CUDAGraphMode.FULL in allowed_modes,
         )
 
         if CUDAGraphMode.FULL in allowed_modes:
