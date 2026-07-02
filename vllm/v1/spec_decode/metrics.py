@@ -42,6 +42,13 @@ class SpecDecodingStats:
     sample_ms: float = 0.0
     draft_total_ms: float = 0.0
     draft_forward_ms_per_pos: list[float] = field(default_factory=list)
+    # Layer-averaged distinct-expert count (Ū_r) over the verification
+    # microbatch; 0.0 for dense targets or when routing capture is unavailable.
+    avg_distinct_experts: float = 0.0
+    # Number of verified positions this step (sum of K_i + 1 over requests).
+    # 0 on non-spec/prefill steps. Used to bin target_forward by position count
+    # so T_T(0)=bin[1] and T_T(K)=bin[K+1] fall out of one run.
+    num_verified_positions: int = 0
 
     @classmethod
     def new(cls, num_spec_tokens: int) -> "SpecDecodingStats":
@@ -69,6 +76,8 @@ class SpecDecodingStats:
         self.sample_ms = timing.sample_ms
         self.draft_total_ms = timing.draft_total_ms
         self.draft_forward_ms_per_pos = list(timing.draft_forward_ms_per_pos)
+        self.avg_distinct_experts = timing.avg_distinct_experts
+        self.num_verified_positions = timing.num_verified_positions
 
 
 class SpecDecodingLogging:
@@ -96,6 +105,8 @@ class SpecDecodingLogging:
         self.sample_ms: list[float] = []
         self.draft_total_ms: list[float] = []
         self.draft_forward_ms_per_pos_lists: list[list[float]] = []
+        self.avg_distinct_experts: list[float] = []
+        self.num_verified_positions: list[int] = []
         self.last_log_time = time.monotonic()
 
     def observe(self, spec_decoding_stats: SpecDecodingStats):
@@ -112,6 +123,10 @@ class SpecDecodingLogging:
             self.draft_total_ms.append(spec_decoding_stats.draft_total_ms)
             self.draft_forward_ms_per_pos_lists.append(
                 spec_decoding_stats.draft_forward_ms_per_pos
+            )
+            self.avg_distinct_experts.append(spec_decoding_stats.avg_distinct_experts)
+            self.num_verified_positions.append(
+                spec_decoding_stats.num_verified_positions
             )
 
     def log(self, log_fn=logger.info):
@@ -182,16 +197,55 @@ class SpecDecodingLogging:
         sample = float(np.sum(self.sample_ms)) / n
         per_pos = self._mean_per_pos(self.draft_forward_ms_per_pos_lists)
         per_pos_str = ", ".join(f"{p:.3f}" for p in per_pos)
+        avg_experts = (
+            float(np.sum(self.avg_distinct_experts)) / n
+            if self.avg_distinct_experts
+            else 0.0
+        )
         log_fn(
             "SpecDecoding timing (mean ms/step over %d steps): "
             "target_forward: %.3f, draft_total: %.3f, verify: %.3f, "
-            "sample: %.3f, per-position draft: [%s]",
+            "sample: %.3f, per-position draft: [%s], avg_distinct_experts: %.2f",
             n,
             target,
             draft,
             verify,
             sample,
             per_pos_str,
+            avg_experts,
+        )
+        self._log_target_by_positions(log_fn)
+
+    def _log_target_by_positions(self, log_fn):
+        """Log T_T(k) binned by verified positions, plus eta(K)=T_T(0)/T_T(K)."""
+        pairs = [
+            (k, ms)
+            for k, ms in zip(self.num_verified_positions, self.target_forward_ms)
+            if k >= 1
+        ]
+        if not pairs:
+            return
+        by_k: dict[int, list[float]] = {}
+        for k, ms in pairs:
+            by_k.setdefault(k, []).append(ms)
+        means = {k: float(np.mean(v)) for k, v in by_k.items()}
+        # Paper index: T_T(j) is the forward over j+1 positions, so bin[1]=T_T(0).
+        bins_str = ", ".join(
+            f"{k - 1}:{means[k]:.3f}({len(by_k[k])})" for k in sorted(means)
+        )
+        t_t0 = means.get(1)
+        k_max = max(means)
+        t_tk = means.get(k_max)
+        eta = t_t0 / t_tk if t_t0 and t_tk else float("nan")
+        log_fn(
+            "SpecDecoding T_T by positions (mean ms, paper K index, count): [%s]; "
+            "T_T(0): %s, T_T(%d): %.3f, eta(%d): %.3f",
+            bins_str,
+            f"{t_t0:.3f}" if t_t0 is not None else "n/a",
+            k_max - 1,
+            t_tk,
+            k_max - 1,
+            eta,
         )
 
     @staticmethod
@@ -340,6 +394,15 @@ class SpecDecodingProm:
         self.counter_spec_decode_draft_forward_us_per_pos: dict[
             int, list[prometheus_client.Counter]
         ] = {}
+        # target_forward binned by number of verified positions k (index == k).
+        # T_T(k-1) = sum_us[k] / count[k] / 1000 ms; hence T_T(0)=bin[1],
+        # T_T(K)=bin[K+1], and eta(K) = bin[1] / bin[K+1].
+        self.counter_spec_decode_target_forward_us_by_positions: dict[
+            int, list[prometheus_client.Counter]
+        ] = {}
+        self.counter_spec_decode_target_forward_count_by_positions: dict[
+            int, list[prometheus_client.Counter]
+        ] = {}
         if not enable_timing:
             return
         timing_specs = [
@@ -360,6 +423,11 @@ class SpecDecodingProm:
                 "vllm:spec_decode_num_timed_steps",
                 "Number of speculative steps with recorded timing.",
             ),
+            (
+                "vllm:spec_decode_distinct_experts_milli",
+                "Layer-averaged distinct experts (Ū_r) x1000, summed over timed "
+                "steps; mean Ū_r = value / 1000 / num_timed_steps.",
+            ),
         ]
         timing_counters = [
             create_metric_per_engine(
@@ -374,6 +442,7 @@ class SpecDecodingProm:
             "sample": timing_counters[2],
             "draft_total": timing_counters[3],
             "num_timed_steps": timing_counters[4],
+            "distinct_experts": timing_counters[5],
         }
         num_spec_tokens = (
             speculative_config.num_speculative_tokens
@@ -391,6 +460,40 @@ class SpecDecodingProm:
                 idx: [
                     base_draft_us.labels(*lv, str(pos))
                     for pos in range(num_spec_tokens)
+                ]
+                for idx, lv in per_engine_labelvalues.items()
+            }
+
+            # Verified-position bins run 0..K+1 (index k). Index 0 is unused
+            # (prefill steps are excluded); k in 1..K+1 hold target_forward for
+            # steps that verified exactly k positions.
+            num_position_bins = num_spec_tokens + 2
+            base_tf_us = self._counter_cls(
+                name="vllm:spec_decode_target_forward_microseconds_by_positions",
+                documentation=(
+                    "Target forward time in microseconds, summed over steps that "
+                    "verified exactly 'position' positions."
+                ),
+                labelnames=pos_labelnames,
+            )
+            base_tf_count = self._counter_cls(
+                name="vllm:spec_decode_target_forward_count_by_positions",
+                documentation=(
+                    "Number of steps that verified exactly 'position' positions "
+                    "(denominator for target_forward_microseconds_by_positions)."
+                ),
+                labelnames=pos_labelnames,
+            )
+            self.counter_spec_decode_target_forward_us_by_positions = {
+                idx: [
+                    base_tf_us.labels(*lv, str(k)) for k in range(num_position_bins)
+                ]
+                for idx, lv in per_engine_labelvalues.items()
+            }
+            self.counter_spec_decode_target_forward_count_by_positions = {
+                idx: [
+                    base_tf_count.labels(*lv, str(k))
+                    for k in range(num_position_bins)
                 ]
                 for idx, lv in per_engine_labelvalues.items()
             }
@@ -424,10 +527,27 @@ class SpecDecodingProm:
             _ms_to_us(spec_decoding_stats.draft_total_ms)
         )
         timing["num_timed_steps"][engine_idx].inc(1)
+        timing["distinct_experts"][engine_idx].inc(
+            int(round(spec_decoding_stats.avg_distinct_experts * 1000))
+        )
         per_pos = self.counter_spec_decode_draft_forward_us_per_pos.get(engine_idx, [])
         for pos, value in enumerate(spec_decoding_stats.draft_forward_ms_per_pos):
             if pos < len(per_pos):
                 per_pos[pos].inc(_ms_to_us(value))
+
+        # Bin the target forward by the number of verified positions so T_T(k)
+        # can be recovered per position count. Prefill/non-spec steps report 0
+        # positions and are excluded; k is capped at the vector width (K+1).
+        k = spec_decoding_stats.num_verified_positions
+        us_bins = self.counter_spec_decode_target_forward_us_by_positions.get(
+            engine_idx, []
+        )
+        count_bins = self.counter_spec_decode_target_forward_count_by_positions.get(
+            engine_idx, []
+        )
+        if 1 <= k < len(us_bins):
+            us_bins[k].inc(_ms_to_us(spec_decoding_stats.target_forward_ms))
+            count_bins[k].inc(1)
 
 
 def _ms_to_us(ms: float) -> int:

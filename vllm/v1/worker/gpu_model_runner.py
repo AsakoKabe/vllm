@@ -197,7 +197,11 @@ from vllm.v1.spec_decode.ngram_proposer_gpu import (
 )
 from vllm.v1.spec_decode.step3p5 import Step3p5MTPProposer
 from vllm.v1.spec_decode.suffix_decoding import SuffixDecodingProposer
-from vllm.v1.spec_decode.timing import SpecDecodeTimer, SpecDecodeTimingStats
+from vllm.v1.spec_decode.timing import (
+    SpecDecodeTimer,
+    SpecDecodeTimingStats,
+    compute_avg_distinct_experts,
+)
 from vllm.v1.spec_decode.utils import update_num_computed_tokens_for_batch_change
 from vllm.v1.structured_output.utils import apply_grammar_bitmask
 from vllm.v1.utils import CpuGpuBuffer, record_function_or_nullcontext
@@ -4697,8 +4701,20 @@ class GPUModelRunner(
         kv_connector_output = self.kv_connector_output
         self.kv_connector_output = None
 
+        # Tag the current step with its layer-averaged distinct-expert count
+        # (Ū_r) from the routing captured this step, before it is cleared next
+        # step. Gated by the timing flag (profiling only) and requires the
+        # routed-experts capturer (--enable-return-routed-experts); the D2H sync
+        # is acceptable in this profiling path. Aligned with this step's timing
+        # via the same double-buffer slot (drained one step later).
+        if self.spec_decode_timer.enabled and self.routed_experts_initialized:
+            total = scheduler_output.total_num_scheduled_tokens
+            routing = self.routed_experts_capturer.get_device_buffer()[:total]
+            self.spec_decode_timer.set_avg_distinct_experts(
+                compute_avg_distinct_experts(routing.cpu().numpy())
+            )
+
         # Drain the previous step's stage timings (one-step lag; never blocks).
-        # Transport into ModelRunnerOutput / metrics is wired in a later phase.
         self._spec_decode_timing = self.spec_decode_timer.drain()
 
         with record_function_or_nullcontext("gpu_model_runner: ModelRunnerOutput"):

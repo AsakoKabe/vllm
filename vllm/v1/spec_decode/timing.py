@@ -14,6 +14,7 @@ import contextlib
 from collections.abc import Iterator
 from dataclasses import dataclass, field
 
+import numpy as np
 import torch
 
 # Scalar stages timed once per speculative step. Per-position draft forwards are
@@ -38,6 +39,9 @@ class SpecDecodeTimingStats:
     # Target verification microbatch size (sum of K_i + 1 over requests). Used
     # later to bin T_T by the number of verified positions for the cost model.
     num_verified_positions: int = 0
+    # Layer-averaged distinct-expert count (Ū_r) over the verification
+    # microbatch; 0.0 for dense targets or when routing capture is unavailable.
+    avg_distinct_experts: float = 0.0
 
 
 class _EventPair:
@@ -73,6 +77,7 @@ class _Slot:
         self.draft_pos = [_EventPair() for _ in range(num_spec_tokens)]
         self.dirty = False
         self.num_verified_positions = 0
+        self.avg_distinct_experts = 0.0
 
     def reset(self) -> None:
         for pair in self.scalar.values():
@@ -81,6 +86,7 @@ class _Slot:
             pair.reset()
         self.dirty = False
         self.num_verified_positions = 0
+        self.avg_distinct_experts = 0.0
 
     def ready(self) -> bool:
         pairs = [p for p in self.scalar.values() if p.recorded]
@@ -126,6 +132,12 @@ class SpecDecodeTimer:
         if not self.enabled:
             return
         self._slots[self._write_idx].num_verified_positions = num_positions
+
+    def set_avg_distinct_experts(self, avg_distinct_experts: float) -> None:
+        """Tag the current step with its layer-averaged distinct-expert count."""
+        if not self.enabled:
+            return
+        self._slots[self._write_idx].avg_distinct_experts = avg_distinct_experts
 
     @contextlib.contextmanager
     def time_stage(self, stage: str, pos: int | None = None) -> Iterator[None]:
@@ -178,9 +190,36 @@ class SpecDecodeTimer:
             draft_total_ms=self._read(prev, "draft_total"),
             draft_forward_ms_per_pos=draft_ms,
             num_verified_positions=prev.num_verified_positions,
+            avg_distinct_experts=prev.avg_distinct_experts,
         )
 
     @staticmethod
     def _read(slot: _Slot, stage: str) -> float:
         pair = slot.scalar[stage]
         return pair.elapsed_ms() if pair.recorded else 0.0
+
+
+def compute_avg_distinct_experts(routing_data: np.ndarray) -> float:
+    """Layer-averaged distinct-expert count (Ū_r) for one verification step.
+
+    Args:
+        routing_data: Logical expert ids selected per (token, layer, slot),
+            shape ``(num_tokens, num_layers, top_k)``, as captured by
+            ``RoutedExpertsCapturer`` and sliced to the step's scheduled tokens.
+
+    Returns:
+        The mean over MoE layers of the number of distinct experts routed to in
+        that layer. Layers with no routing (all-zero, i.e. dense/unused) are
+        excluded. Returns 0.0 for an empty batch or a dense (non-MoE) target.
+    """
+    if routing_data.ndim != 3 or routing_data.shape[0] == 0:
+        return 0.0
+    counts: list[int] = []
+    for layer in range(routing_data.shape[1]):
+        experts = np.unique(routing_data[:, layer, :])
+        # An all-zero slice means the layer was never routed (dense/unused);
+        # expert id 0 is otherwise a valid expert.
+        if experts.size == 1 and experts[0] == 0:
+            continue
+        counts.append(int(experts.size))
+    return float(np.mean(counts)) if counts else 0.0
