@@ -65,6 +65,15 @@ class ObservabilityConfig:
     instrumented). Metrics are produced only when log stats are enabled
     (``disable_log_stats=False``)."""
 
+    spec_decode_trace_path: str | None = None
+    """Write a per-round speculative-decoding trace (one JSONL record per
+    speculative round) to this path: draft/accepted/rejected token counts
+    (total and per position), stage timings, verification microbatch size,
+    distinct-expert count (U_r) and the EVICT decision. Requires log stats
+    (``disable_log_stats=False``); timing/U_r fields additionally require
+    ``--spec-decode-timing``. Load back with
+    ``vllm.v1.spec_decode.trace.load_trace``. Off (None) by default."""
+
     enable_layerwise_nvtx_tracing: bool = False
     """Enable layerwise NVTX tracing. This traces the execution of each layer or
     module in the model and attach information such as input/output shapes to

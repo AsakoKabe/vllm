@@ -1312,6 +1312,11 @@ class StatLoggerManager:
                     else LoggingStatLogger
                 )
                 stat_logger_factories.append(default_logger_factory)
+        if vllm_config.observability_config.spec_decode_trace_path:
+            # Per-round speculative-decoding trace (JSONL, one line per round).
+            from vllm.v1.spec_decode.trace import SpecDecodeTraceLogger
+
+            stat_logger_factories.append(SpecDecodeTraceLogger)
         custom_prometheus_logger: bool = False
         for stat_logger_factory in stat_logger_factories:
             if isinstance(stat_logger_factory, type) and issubclass(

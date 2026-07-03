@@ -63,6 +63,13 @@ Accepted length $\mathbb{E}[A]=1+\frac{\text{accepted}}{\text{drafts}}$ (с bonu
 
 Средняя доля усечения $=\text{mean}_i[(K_i-m^*_i)/K_i]$. Лог-строка `SpecDecoding EVICT …` печатает mean $m^*$, mean $K$, saved positions, % усечения. Реализация: `gpu_model_runner._apply_evict_truncation` → `metrics.py` (`observe_evict`/Prom/Logging), носитель `vllm/v1/spec_decode/evict/stats.py`. Скрипт `evict_vs_baseline.py` печатает их в блоке DECOMPOSITION + распределение $m^*$.
 
+## 3b. Per-round trace (массивы по каждому спекулятивному раунду)
+Флаг **`--spec-decode-trace-path PATH`** → `vllm/v1/spec_decode/trace.py::SpecDecodeTraceLogger` пишет JSONL: первая строка — `{"meta": …}`, дальше по строке на раунд. Чтение: `load_trace(path)` → колоночные массивы (одно значение на раунд; отсутствующее поле → `None`).
+
+Поля записи: `step`; **verify-раунд** — `num_drafts` (=bonus), `num_draft_tokens` (подано), `num_accepted_tokens`, `num_rejected_tokens`, `num_emitted_tokens`, `drafted_per_pos`/`accepted_per_pos` ([K]); **тайминг** (при `--spec-decode-timing`) — `target_forward_ms`, `verify_ms`, `sample_ms`, `draft_total_ms`, `draft_forward_ms_per_pos`, `num_verified_positions`, `avg_distinct_experts`; **EVICT** — `evict_kstar`, `evict_num_spec`, `evict_num_reqs`, `evict_saved_positions`.
+
+⚠️ **Выравнивание:** тайминг-блок записи N измерен на раунде N−1 (double-buffer); пары $(T_T,\bar U_r)$ внутри блока выровнены между собой; для пар «тайминг↔acceptance» сдвинуть один блок на 1 запись. Bench пишет трейсы по умолчанию (`evict_trace_<config>_<ts>.jsonl`, пути в results JSON; `--no-trace` выкл). Это разблокирует per-round корреляции (например $T_T$ vs $\bar U_r$) без offline-фита.
+
 ## 4. Поток данных
 ```
 SpecDecodeTimer.time_stage(...)  — CUDA events

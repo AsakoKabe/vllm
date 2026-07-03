@@ -191,6 +191,13 @@ def parse_args():
         help="Do not write a results JSON.",
     )
     parser.add_argument(
+        "--no-trace",
+        action="store_true",
+        help="Do not write per-round JSONL traces (evict_trace_*.jsonl). "
+        "Traces hold one record per speculative round: draft/accepted/"
+        "rejected counts, stage timings, U_r, EVICT m*.",
+    )
+    parser.add_argument(
         "--cache",
         type=str,
         default=None,
@@ -380,6 +387,17 @@ def run_config(args, name: str, spec_config: dict | None, prompts, sp) -> dict:
         llm_kwargs["async_scheduling"] = False
         if args.enable_return_routed_experts:
             llm_kwargs["enable_return_routed_experts"] = True
+        if not args.no_trace:
+            # Per-round JSONL trace: arrays of every metric per speculative
+            # round (see vllm.v1.spec_decode.trace.load_trace). The warmup
+            # rounds are at the head of the file; the timed run follows.
+            llm_kwargs["spec_decode_trace_path"] = trace_path = (
+                f"evict_trace_{name}_{time.strftime('%Y%m%d_%H%M%S')}.jsonl"
+            )
+        else:
+            trace_path = None
+    else:
+        trace_path = None
     llm = LLM(**llm_kwargs)
 
     # Warm up (JIT/CUDA-graph capture) on a couple of prompts, then snapshot so
@@ -400,6 +418,7 @@ def run_config(args, name: str, spec_config: dict | None, prompts, sp) -> dict:
         "out_tokens": out_tokens,
         "throughput": out_tokens / wall_s if wall_s > 0 else float("nan"),
         "texts": texts,
+        "trace_path": trace_path,
     }
     if spec_config is not None:
         result.update(derive(after, before, args.num_spec_tokens))

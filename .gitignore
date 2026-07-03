@@ -259,3 +259,4 @@ csrc/cpu/cpu_attn_dispatch_generated.h
 evict_results_*.json
 evict_cache_*.json
 evict_cost_table_*.json
+evict_trace_*.jsonl
