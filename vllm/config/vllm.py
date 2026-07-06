@@ -2058,6 +2058,13 @@ class VllmConfig:
             # Will be added by https://github.com/vllm-project/vllm/pull/38163
             unsupported.append("routed experts capture")
 
+        if (
+            self.observability_config is not None
+            and self.observability_config.spec_decode_timing
+        ):
+            # Per-stage spec-decode timing is instrumented in the V1 model runner.
+            unsupported.append("spec-decode timing")
+
         has_logitsproc_plugins = False
         if model_config is not None:
             from importlib.metadata import entry_points

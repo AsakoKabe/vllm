@@ -192,6 +192,11 @@ from vllm.v1.spec_decode.ngram_proposer_gpu import (
 )
 from vllm.v1.spec_decode.step3p5 import Step3p5MTPProposer
 from vllm.v1.spec_decode.suffix_decoding import SuffixDecodingProposer
+from vllm.v1.spec_decode.timing import (
+    SpecDecodeTimer,
+    SpecDecodeTimingStats,
+    compute_avg_distinct_experts,
+)
 from vllm.v1.spec_decode.utils import update_num_computed_tokens_for_batch_change
 from vllm.v1.structured_output.utils import apply_grammar_bitmask
 from vllm.v1.utils import CpuGpuBuffer, record_function_or_nullcontext
@@ -635,6 +640,25 @@ class GPUModelRunner(
         self.use_async_spec_decode = (
             self.use_async_scheduling and self.num_spec_tokens > 0
         )
+
+        # Atomic per-stage speculative-decode timing (off unless
+        # --spec-decode-timing and speculative decoding are both enabled).
+        self.spec_decode_timer = SpecDecodeTimer(
+            enabled=(
+                self.observability_config.spec_decode_timing
+                and self.speculative_config is not None
+                # Only the last PP rank samples/drafts and drains the timer;
+                # other ranks would record events that are never read.
+                and get_pp_group().is_last_rank
+            ),
+            num_spec_tokens=self.num_spec_tokens,
+        )
+        self._spec_decode_timing: SpecDecodeTimingStats | None = None
+        # Inject the timer into the drafter so model-based proposers can time
+        # each per-position draft forward.
+        drafter = getattr(self, "drafter", None)
+        if drafter is not None:
+            drafter.spec_decode_timer = self.spec_decode_timer
 
         # Request states.
         self.requests: dict[str, CachedRequestState] = {}
@@ -3590,10 +3614,11 @@ class GPUModelRunner(
         # if async scheduling and required by current sampling params.
         self.input_batch.update_async_output_token_ids()
         if spec_decode_metadata is None:
-            return self.sampler(
-                logits=logits,
-                sampling_metadata=sampling_metadata,
-            )
+            with self.spec_decode_timer.time_stage("sample"):
+                return self.sampler(
+                    logits=logits,
+                    sampling_metadata=sampling_metadata,
+                )
 
         # Update spec_token_ids with real draft tokens from pre step only when
         # output_token_ids is needed (penalties or bad_words are in use).
@@ -3602,12 +3627,13 @@ class GPUModelRunner(
             self.input_batch.update_async_spec_token_ids(draft_token_ids_cpu)
 
         draft_probs = self._get_spec_decode_draft_probs(spec_decode_metadata)
-        sampler_output = self.rejection_sampler(
-            spec_decode_metadata,
-            draft_probs,
-            logits,
-            sampling_metadata,
-        )
+        with self.spec_decode_timer.time_stage("verify"):
+            sampler_output = self.rejection_sampler(
+                spec_decode_metadata,
+                draft_probs,
+                logits,
+                sampling_metadata,
+            )
         return sampler_output
 
     def _bookkeeping_sync(
@@ -4311,6 +4337,12 @@ class GPUModelRunner(
         # When spec decode is enabled, defer connector finalization
         # (wait_for_save + clear metadata) until after draft model runs.
         defer_kv_connector_finalize = self.speculative_config is not None
+        self.spec_decode_timer.begin_step()
+        if spec_decode_metadata is not None:
+            self.spec_decode_timer.set_num_verified_positions(
+                sum(spec_decode_metadata.num_draft_tokens)
+                + len(spec_decode_metadata.num_draft_tokens)
+            )
         with (
             set_forward_context(
                 attn_metadata,
@@ -4328,6 +4360,7 @@ class GPUModelRunner(
                 scheduler_output,
                 defer_finalize=defer_kv_connector_finalize,
             ) as kv_connector_output,
+            self.spec_decode_timer.time_stage("target_forward"),
         ):
             model_output = self._model_forward(
                 input_ids=input_ids,
@@ -4493,17 +4526,18 @@ class GPUModelRunner(
         def propose_draft_token_ids(sampled_token_ids):
             assert spec_decode_common_attn_metadata is not None
             with record_function_or_nullcontext("gpu_model_runner: draft"):
-                self._draft_token_ids = self.propose_draft_token_ids(
-                    scheduler_output,
-                    sampled_token_ids,
-                    self.input_batch.sampling_metadata,
-                    hidden_states,
-                    sample_hidden_states,
-                    aux_hidden_states,
-                    spec_decode_metadata,
-                    spec_decode_common_attn_metadata,
-                    slot_mappings,
-                )
+                with self.spec_decode_timer.time_stage("draft_total"):
+                    self._draft_token_ids = self.propose_draft_token_ids(
+                        scheduler_output,
+                        sampled_token_ids,
+                        self.input_batch.sampling_metadata,
+                        hidden_states,
+                        sample_hidden_states,
+                        aux_hidden_states,
+                        spec_decode_metadata,
+                        spec_decode_common_attn_metadata,
+                        slot_mappings,
+                    )
                 self._copy_draft_token_ids_to_cpu(scheduler_output)
 
         spec_config = self.speculative_config
@@ -4618,6 +4652,22 @@ class GPUModelRunner(
         kv_connector_output = self.kv_connector_output
         self.kv_connector_output = None
 
+        # Tag the current step with its layer-averaged distinct-expert count
+        # (Ū_r) from the routing captured this step, before it is cleared next
+        # step. Gated by the timing flag (profiling only) and requires the
+        # routed-experts capturer (--enable-return-routed-experts); the D2H sync
+        # is acceptable in this profiling path. Aligned with this step's timing
+        # via the same double-buffer slot (drained one step later).
+        if self.spec_decode_timer.enabled and self.routed_experts_initialized:
+            total = scheduler_output.total_num_scheduled_tokens
+            routing = self.routed_experts_capturer.get_device_buffer()[:total]
+            self.spec_decode_timer.set_avg_distinct_experts(
+                compute_avg_distinct_experts(routing.cpu().numpy())
+            )
+
+        # Drain the previous step's stage timings (one-step lag; never blocks).
+        self._spec_decode_timing = self.spec_decode_timer.drain()
+
         with record_function_or_nullcontext("gpu_model_runner: ModelRunnerOutput"):
             output = ModelRunnerOutput(
                 req_ids=req_ids_output_copy,
@@ -4631,6 +4681,7 @@ class GPUModelRunner(
                 else None,
                 num_nans_in_logits=num_nans_in_logits,
                 cudagraph_stats=cudagraph_stats,
+                spec_decode_timing=self._spec_decode_timing,
                 routed_experts=None,
             )
 

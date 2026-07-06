@@ -41,6 +41,7 @@ from vllm.v1.sample.ops.topk_topp_sampler import (
 )
 from vllm.v1.sample.sampler import _SAMPLING_EPS
 from vllm.v1.spec_decode.metadata import SpecDecodeMetadata
+from vllm.v1.spec_decode.timing import SpecDecodeTimer
 from vllm.v1.spec_decode.utils import (
     PADDING_SLOT_ID,
     compute_new_slot_mapping,
@@ -74,6 +75,9 @@ class SpecDecodeBaseProposer:
         self.method = self.speculative_config.method
         self.pass_hidden_states_to_model = pass_hidden_states_to_model
         self._share_mtp_indices = False
+        # Disabled placeholder; the model runner injects the real timer when
+        # --spec-decode-timing is enabled (see GPUModelRunner.__init__).
+        self.spec_decode_timer = SpecDecodeTimer(enabled=False, num_spec_tokens=0)
 
         self.device = device
         self.dtype = vllm_config.model_config.dtype
@@ -537,7 +541,8 @@ class SpecDecodeBaseProposer:
                 slot_mapping_size, common_attn_metadata.slot_mapping
             ),
         ):
-            ret_hidden_states = self.model(**model_kwargs)
+            with self.spec_decode_timer.time_stage("draft", pos=0):
+                ret_hidden_states = self.model(**model_kwargs)
             if not self.model_returns_tuple():
                 last_hidden_states = ret_hidden_states
                 hidden_states = last_hidden_states
@@ -680,7 +685,8 @@ class SpecDecodeBaseProposer:
                 cudagraph_runtime_mode=cudagraph_runtime_mode,
                 slot_mapping=self._get_slot_mapping(input_batch_size),
             ):
-                ret_hidden_states = self.model(**model_kwargs)
+                with self.spec_decode_timer.time_stage("draft", pos=token_index + 1):
+                    ret_hidden_states = self.model(**model_kwargs)
                 if not self.model_returns_tuple():
                     last_hidden_states = ret_hidden_states
                     hidden_states = ret_hidden_states
