@@ -337,18 +337,6 @@ def derive(after: dict, before: dict, num_spec_tokens: int) -> dict:
     out["u_r_dom"] = u_r(dom_k) if dom_k else None
     out["u_r_full"] = u_r(num_spec_tokens + 1)
 
-    # Analytical speedup vs AR from the decomposition (needs a T_T(0) sample):
-    #   SpeedUp = E[A] * T_T(0) / (K * T_D(1) + T_T(dom) + T_reject)
-    # using the realized draft-forward T_D(1) = mean per-position draft.
-    t_t0 = out["t_t0_ms"]
-    t_t_ref = out["t_t_dom_ms"] or out["t_t_full_ms"]
-    t_d1 = out["per_pos_draft_ms"][0] if out["per_pos_draft_ms"] else 0.0
-    denom = num_spec_tokens * t_d1 + (t_t_ref or 0.0) + out["verify_ms"]
-    if t_t0 and t_t_ref and denom > 0:
-        out["analytical_speedup"] = out["accepted_length"] * t_t0 / denom
-    else:
-        out["analytical_speedup"] = None
-
     # EVICT truncation effect (populated only for the EVICT config).
     evict_steps = _diff_scalar(after, before, EVICT_STEPS_METRIC)
     if evict_steps > 0:
@@ -484,7 +472,6 @@ def print_report(
         ("U_r @ full K+1", "u_r_full", "8.3f"),
         ("T_T(0) (ms)", "t_t0_ms", "8.3f"),
         ("T_T(K) (ms)", "t_t_full_ms", "8.3f"),
-        ("analytical speedup", "analytical_speedup", "8.3f"),
         ("num_timed_steps", "num_timed_steps", "8d"),
         ("EVICT mean m*", "evict_mean_kstar", "8.3f"),
         ("EVICT saved positions", "evict_saved_positions", "8d"),
