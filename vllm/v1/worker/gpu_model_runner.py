@@ -202,6 +202,7 @@ from vllm.v1.spec_decode.timing import (
     SpecDecodeTimer,
     SpecDecodeTimingStats,
     compute_avg_distinct_experts,
+    compute_moe_max_tokens_per_expert,
 )
 from vllm.v1.spec_decode.utils import update_num_computed_tokens_for_batch_change
 from vllm.v1.structured_output.utils import apply_grammar_bitmask
@@ -4746,9 +4747,14 @@ class GPUModelRunner(
         # via the same double-buffer slot (drained one step later).
         if self.spec_decode_timer.enabled and self.routed_experts_initialized:
             total = scheduler_output.total_num_scheduled_tokens
-            routing = self.routed_experts_capturer.get_device_buffer()[:total]
+            routing = (
+                self.routed_experts_capturer.get_device_buffer()[:total].cpu().numpy()
+            )
             self.spec_decode_timer.set_avg_distinct_experts(
-                compute_avg_distinct_experts(routing.cpu().numpy())
+                compute_avg_distinct_experts(routing)
+            )
+            self.spec_decode_timer.set_moe_max_tokens_per_expert(
+                compute_moe_max_tokens_per_expert(routing)
             )
 
         # Drain the previous step's stage timings (one-step lag; never blocks).

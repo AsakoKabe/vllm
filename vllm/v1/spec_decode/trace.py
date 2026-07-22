@@ -6,8 +6,13 @@ Writes one JSONL record per speculative round (scheduler step with spec
 activity), so every metric is available as a per-round array instead of a
 cumulative counter: draft tokens fed/generated, verification submitted /
 accepted / rejected / bonus (total and per position), stage timings, the
-verification microbatch size, the layer-averaged distinct-expert count U_r,
-and the EVICT truncation decision.
+verification microbatch size, the layer-averaged distinct-expert count U_r
+and max expert load S_max, the EVICT truncation decision, and scheduler-side
+latency covariates (batch
+size B, queue depth, KV-cache usage, total attended context L, and the
+CUDA-graph padding/mode when ``--cudagraph-metrics`` is on). The covariates
+let the target-forward time be modelled against more than U_r alone -- e.g.
+the attention ~ q*L term and graph-bucket padding that a T_T ~ U_r fit hides.
 
 Enable with ``--spec-decode-trace-path PATH`` (requires log stats, i.e.
 ``disable_log_stats=False``). Timing/U_r fields additionally require
@@ -43,7 +48,7 @@ if TYPE_CHECKING:
 
 logger = init_logger(__name__)
 
-TRACE_SCHEMA_VERSION = 1
+TRACE_SCHEMA_VERSION = 2
 
 
 class SpecDecodeTraceLogger(StatLoggerBase):
@@ -63,21 +68,35 @@ class SpecDecodeTraceLogger(StatLoggerBase):
         # logger, so a context manager does not apply.
         self._file: IO[str] = open(p, "w", buffering=1)  # noqa: SIM115
         self._step = 0
-        model = (
-            vllm_config.model_config.model
-            if vllm_config.model_config is not None
-            else None
-        )
+        model_config = vllm_config.model_config
+        model = model_config.model if model_config is not None else None
         meta = {
             "meta": {
                 "schema_version": TRACE_SCHEMA_VERSION,
                 "engine_index": engine_index,
                 "model": model,
                 "num_spec_tokens": getattr(vllm_config, "num_speculative_tokens", 0),
+                # Static run parameters so a trace file is self-contained for
+                # offline fits: MoE experts-per-token (None for dense) and the
+                # engine batch-size cap.
+                "moe_top_k": getattr(
+                    getattr(model_config, "hf_text_config", None),
+                    "num_experts_per_tok",
+                    None,
+                ),
+                "max_num_seqs": getattr(
+                    getattr(vllm_config, "scheduler_config", None),
+                    "max_num_seqs",
+                    None,
+                ),
                 "timing_lag_note": (
                     "timing fields of record N were measured on round N-1; "
                     "num_verified_positions/avg_distinct_experts share that "
-                    "slot, so (T_T, U_r) pairs are aligned with each other"
+                    "slot, so (T_T, U_r) pairs are aligned with each other. "
+                    "Scheduler covariates (num_running_reqs, num_waiting_reqs, "
+                    "kv_cache_usage, total_context_tokens) and cudagraph_* "
+                    "describe round N itself; shift by one record to pair "
+                    "them with the timing block."
                 ),
             }
         }
@@ -112,6 +131,15 @@ class SpecDecodeTraceLogger(StatLoggerBase):
             "num_emitted_tokens": stats.num_accepted_tokens + stats.num_drafts,
             "drafted_per_pos": list(stats.num_draft_tokens_per_pos),
             "accepted_per_pos": list(stats.num_accepted_tokens_per_pos),
+            # Scheduler-side latency covariates (always available). Batch size B,
+            # queue depth, pooled KV-block usage, and total attended context L
+            # (the L in the ~q*L attention term). Snapshot at end of step; to
+            # pair with target_forward_ms (measured on round N-1) shift by one
+            # record like the timing block.
+            "num_running_reqs": scheduler_stats.num_running_reqs,
+            "num_waiting_reqs": scheduler_stats.num_waiting_reqs,
+            "kv_cache_usage": scheduler_stats.kv_cache_usage,
+            "total_context_tokens": scheduler_stats.total_context_tokens,
         }
         if stats.has_timing:
             record.update(
@@ -122,6 +150,7 @@ class SpecDecodeTraceLogger(StatLoggerBase):
                 draft_forward_ms_per_pos=list(stats.draft_forward_ms_per_pos),
                 num_verified_positions=stats.num_verified_positions,
                 avg_distinct_experts=stats.avg_distinct_experts,
+                moe_max_tokens_per_expert=stats.moe_max_tokens_per_expert,
             )
         if stats.has_evict:
             record.update(
@@ -129,6 +158,17 @@ class SpecDecodeTraceLogger(StatLoggerBase):
                 evict_num_spec=stats.evict_num_spec,
                 evict_num_reqs=stats.evict_num_reqs,
                 evict_saved_positions=stats.evict_saved_positions,
+            )
+        cg = scheduler_stats.cudagraph_stats
+        if cg is not None:
+            # Backend/padding covariate: how far the step was padded up to a
+            # captured graph bucket, and the runtime mode (FULL/PIECEWISE/NONE).
+            # Explains T_T that is flat in q because padding restores the shape.
+            record.update(
+                cudagraph_unpadded_tokens=cg.num_unpadded_tokens,
+                cudagraph_padded_tokens=cg.num_padded_tokens,
+                cudagraph_num_paddings=cg.num_paddings,
+                cudagraph_runtime_mode=cg.runtime_mode,
             )
         self._file.write(json.dumps(record) + "\n")
         self._step += 1

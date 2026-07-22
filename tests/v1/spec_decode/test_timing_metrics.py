@@ -18,6 +18,7 @@ from vllm.v1.spec_decode.timing import (
     SpecDecodeTimer,
     SpecDecodeTimingStats,
     compute_avg_distinct_experts,
+    compute_moe_max_tokens_per_expert,
 )
 
 
@@ -366,3 +367,56 @@ def test_timer_avg_distinct_experts_roundtrip(monkeypatch):
     drained = timer.drain()
     assert drained is not None
     assert drained.avg_distinct_experts == 42.5
+
+
+def test_compute_moe_max_tokens_per_expert():
+    # 2 tokens, 3 layers, top_k=2.
+    # layer 0: assignments {1:2, 2:1, 3:1} -> max 2; layer 1: {4:2, 5:2} -> max 2;
+    # layer 2: all-zero (dense/unused) -> excluded.
+    routing = np.array(
+        [
+            [[1, 2], [4, 5], [0, 0]],
+            [[3, 1], [4, 5], [0, 0]],
+        ],
+        dtype=np.int32,
+    )
+    assert compute_moe_max_tokens_per_expert(routing) == (2 + 2) / 2
+
+
+def test_compute_moe_max_tokens_per_expert_expert_zero_counts():
+    # Expert id 0 is a valid, countable expert; here it is the hottest (2 tokens)
+    # while distinct-expert breadth would be 3 -- the two metrics differ.
+    routing = np.array([[[0, 1]], [[0, 2]]], dtype=np.int32)
+    assert compute_moe_max_tokens_per_expert(routing) == 2.0
+    assert compute_avg_distinct_experts(routing) == 3.0
+
+
+def test_compute_moe_max_tokens_per_expert_empty_or_dense():
+    assert compute_moe_max_tokens_per_expert(np.zeros((0, 4, 2), dtype=np.int32)) == 0.0
+    assert compute_moe_max_tokens_per_expert(np.zeros((3, 4, 2), dtype=np.int32)) == 0.0
+
+
+def test_observe_timing_copies_moe_max_tokens_per_expert():
+    stats = SpecDecodingStats.new(num_spec_tokens=3)
+    assert stats.moe_max_tokens_per_expert == 0.0
+    timing = _timing()
+    timing.moe_max_tokens_per_expert = 6.0
+    stats.observe_timing(timing)
+    assert stats.moe_max_tokens_per_expert == 6.0
+
+
+def test_timer_moe_max_tokens_per_expert_roundtrip(monkeypatch):
+    import torch
+
+    monkeypatch.setattr(torch.cuda, "Event", _FakeEvent)
+    timer = SpecDecodeTimer(enabled=True, num_spec_tokens=2)
+
+    timer.begin_step()
+    timer.set_moe_max_tokens_per_expert(7.0)
+    with timer.time_stage("target_forward"):
+        pass
+
+    timer.begin_step()
+    drained = timer.drain()
+    assert drained is not None
+    assert drained.moe_max_tokens_per_expert == 7.0

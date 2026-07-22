@@ -42,6 +42,10 @@ class SpecDecodeTimingStats:
     # Layer-averaged distinct-expert count (Ū_r) over the verification
     # microbatch; 0.0 for dense targets or when routing capture is unavailable.
     avg_distinct_experts: float = 0.0
+    # Layer-averaged max tokens routed to a single expert (S_max): the MoE
+    # load-imbalance / grouped-GEMM-tail covariate that Ū_r (breadth) misses.
+    # 0.0 for dense targets or when routing capture is unavailable.
+    moe_max_tokens_per_expert: float = 0.0
 
 
 class _EventPair:
@@ -78,6 +82,7 @@ class _Slot:
         self.dirty = False
         self.num_verified_positions = 0
         self.avg_distinct_experts = 0.0
+        self.moe_max_tokens_per_expert = 0.0
 
     def reset(self) -> None:
         for pair in self.scalar.values():
@@ -87,6 +92,7 @@ class _Slot:
         self.dirty = False
         self.num_verified_positions = 0
         self.avg_distinct_experts = 0.0
+        self.moe_max_tokens_per_expert = 0.0
 
     def ready(self) -> bool:
         pairs = [p for p in self.scalar.values() if p.recorded]
@@ -138,6 +144,14 @@ class SpecDecodeTimer:
         if not self.enabled:
             return
         self._slots[self._write_idx].avg_distinct_experts = avg_distinct_experts
+
+    def set_moe_max_tokens_per_expert(self, moe_max_tokens_per_expert: float) -> None:
+        """Tag the current step with its layer-averaged max expert load."""
+        if not self.enabled:
+            return
+        self._slots[
+            self._write_idx
+        ].moe_max_tokens_per_expert = moe_max_tokens_per_expert
 
     @contextlib.contextmanager
     def time_stage(self, stage: str, pos: int | None = None) -> Iterator[None]:
@@ -191,6 +205,7 @@ class SpecDecodeTimer:
             draft_forward_ms_per_pos=draft_ms,
             num_verified_positions=prev.num_verified_positions,
             avg_distinct_experts=prev.avg_distinct_experts,
+            moe_max_tokens_per_expert=prev.moe_max_tokens_per_expert,
         )
 
     @staticmethod
@@ -223,3 +238,34 @@ def compute_avg_distinct_experts(routing_data: np.ndarray) -> float:
             continue
         counts.append(int(experts.size))
     return float(np.mean(counts)) if counts else 0.0
+
+
+def compute_moe_max_tokens_per_expert(routing_data: np.ndarray) -> float:
+    """Layer-averaged max tokens routed to a single expert (S_max) for one step.
+
+    Complements :func:`compute_avg_distinct_experts`: Ū_r is routing breadth,
+    while this captures load imbalance (the grouped-GEMM tail). Each token
+    contributes at most once to any expert it selects, so per layer the max
+    count over experts is the hottest expert's token load.
+
+    Args:
+        routing_data: Logical expert ids selected per (token, layer, slot),
+            shape ``(num_tokens, num_layers, top_k)``, as captured by
+            ``RoutedExpertsCapturer`` and sliced to the step's scheduled tokens.
+
+    Returns:
+        The mean over MoE layers of the max tokens routed to any one expert in
+        that layer. Layers with no routing (all-zero, i.e. dense/unused) are
+        excluded. Returns 0.0 for an empty batch or a dense (non-MoE) target.
+    """
+    if routing_data.ndim != 3 or routing_data.shape[0] == 0:
+        return 0.0
+    maxes: list[int] = []
+    for layer in range(routing_data.shape[1]):
+        experts, counts = np.unique(routing_data[:, layer, :], return_counts=True)
+        # An all-zero slice means the layer was never routed (dense/unused);
+        # expert id 0 is otherwise a valid expert.
+        if experts.size == 1 and experts[0] == 0:
+            continue
+        maxes.append(int(counts.max()))
+    return float(np.mean(maxes)) if maxes else 0.0

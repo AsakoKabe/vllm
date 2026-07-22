@@ -46,6 +46,9 @@ class SpecDecodingStats:
     # Layer-averaged distinct-expert count (Ū_r) over the verification
     # microbatch; 0.0 for dense targets or when routing capture is unavailable.
     avg_distinct_experts: float = 0.0
+    # Layer-averaged max tokens routed to a single expert (S_max): MoE
+    # load-imbalance covariate; 0.0 for dense targets or without routing capture.
+    moe_max_tokens_per_expert: float = 0.0
     # Number of verified positions this step (sum of K_i + 1 over requests).
     # 0 on non-spec/prefill steps. Used to bin target_forward by position count
     # so T_T(0)=bin[1] and T_T(K)=bin[K+1] fall out of one run.
@@ -86,6 +89,7 @@ class SpecDecodingStats:
         self.draft_total_ms = timing.draft_total_ms
         self.draft_forward_ms_per_pos = list(timing.draft_forward_ms_per_pos)
         self.avg_distinct_experts = timing.avg_distinct_experts
+        self.moe_max_tokens_per_expert = timing.moe_max_tokens_per_expert
         self.num_verified_positions = timing.num_verified_positions
 
     def observe_evict(self, evict: "EvictStats") -> None:

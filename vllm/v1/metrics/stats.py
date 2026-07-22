@@ -182,6 +182,11 @@ class SchedulerStats:
 
     kv_cache_usage: float = 0.0
 
+    # Total attended context across running requests (sum of num_computed_tokens).
+    # Aggregate L for the attention-cost term (~ q * L); complements
+    # kv_cache_usage (block-granular, pooled) as a per-round T_T covariate.
+    total_context_tokens: int = 0
+
     prefix_cache_stats: PrefixCacheStats = field(default_factory=PrefixCacheStats)
     connector_prefix_cache_stats: PrefixCacheStats | None = None
 
